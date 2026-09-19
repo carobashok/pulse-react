@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #f4f6f9;
+  --sidebar:   #1a2540;
+  --surface:   #ffffff;
+  --surface2:  #f8f9fb;
+  --border:    #e2e6ed;
+  --border-lt: #edf0f4;
+  --saffron:   #e07b10;
+  --saffron-dim:#e07b1012;
+  --navy:      #1a2540;
+  --blue:      #3d7ab5;
+  --text:      #1a2540;
+  --text-sub:  #8995a8;
+  --text-dim:  #b0bac8;
+  --positive:  #16a085;
+  --negative:  #c94f4f;
+  --font:      'DM Sans', system-ui, sans-serif;
+  --mono:      'DM Mono', 'Courier New', monospace;
+  --radius:    4px;
+  --radius-lg: 6px;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #e8edf2 !important;
+}
