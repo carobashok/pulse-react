@@ -17,10 +17,10 @@ const VEH_OPTIONS = [
 ]
 
 function scfBand(val: number | null): { color: string; bg: string } {
-  if (val === null) return { color:'var(--text-dim)', bg:'transparent' }
+  if (val === null) return { color:'#b0bac8', bg:'transparent' }
   if (val < 0.85)  return { color:'#18977a', bg:'#18977a12' }
   if (val < 0.95)  return { color:'#2aa87e', bg:'#2aa87e0e' }
-  if (val < 1.05)  return { color:'var(--text-sub)', bg:'transparent' }
+  if (val < 1.05)  return { color:'#8995a8', bg:'transparent' }
   if (val < 1.15)  return { color:'#d97706', bg:'#d9770610' }
   return               { color:'#c94f4f', bg:'#c94f4f12' }
 }
@@ -42,25 +42,25 @@ function PivotTable({
           <tr style={{ borderBottom:'1px solid var(--border-lt)' }}>
             <th style={thS('left')}>Financial Year</th>
             {colKeys.map(c=><th key={c} style={thS('right')}>{c}</th>)}
-            {aadtCol && <th style={{ ...thS('right'), color:'var(--saffron)' }}>AADT</th>}
+            {aadtCol && <th style={{ ...thS('right'), color:'#e07b10' }}>AADT</th>}
           </tr>
         </thead>
         <tbody>
           {rowKeys.map((fy,ri)=>(
-            <tr key={fy} style={{ background: ri%2===0 ? 'var(--surface)' : 'var(--surface2)', borderBottom:'1px solid var(--border)' }}>
-              <td style={{ ...tdS('left'), color:'var(--text)', fontFamily:'var(--font)', fontWeight:500 }}>{fy}</td>
+            <tr key={fy} style={{ background: ri%2===0 ? 'var(--surface)' : 'var(--surface2, #f8f9fb)', borderBottom:'1px solid var(--border)' }}>
+              <td style={{ ...tdS('left'), color:'#1a2540', fontFamily:'var(--font)', fontWeight:500 }}>{fy}</td>
               {colKeys.map(col=>{
                 const v = data[fy]?.[col] ?? null
-                const style = colorCell ? colorCell(v) : { color:'var(--text)', bg:'transparent' }
+                const style = colorCell ? colorCell(v) : { color:'#1a2540', bg:'transparent' }
                 return (
                   <td key={col} style={{ ...tdS('right'), color:style.color, background:style.bg }}>
-                    {v !== null ? fmtCell(v) : <span style={{color:'var(--text-dim)'}}>—</span>}
+                    {v !== null ? fmtCell(v) : <span style={{color:'#b0bac8'}}>—</span>}
                   </td>
                 )
               })}
               {aadtCol && (
-                <td style={{ ...tdS('right'), color:'var(--saffron)', fontWeight:600 }}>
-                  {aadtCol[fy] != null ? Math.round(aadtCol[fy]!).toLocaleString('en-IN') : <span style={{color:'var(--text-dim)'}}>—</span>}
+                <td style={{ ...tdS('right'), color:'#e07b10', fontWeight:600 }}>
+                  {aadtCol[fy] != null ? Math.round(aadtCol[fy]!).toLocaleString('en-IN') : <span style={{color:'#b0bac8'}}>—</span>}
                 </td>
               )}
             </tr>
@@ -72,7 +72,7 @@ function PivotTable({
 }
 
 function thS(align: 'left'|'right'): React.CSSProperties {
-  return { padding:'9px 14px', textAlign:align, color:'var(--text-dim)', fontWeight:600, fontSize:10, letterSpacing:'0.06em', textTransform:'uppercase', whiteSpace:'nowrap', background:'var(--surface2)', fontFamily:'var(--font)' }
+  return { padding:'9px 14px', textAlign:align, color:'#b0bac8', fontWeight:600, fontSize:10, letterSpacing:'0.06em', textTransform:'uppercase', whiteSpace:'nowrap', background:'var(--surface2, #f8f9fb)', fontFamily:'var(--font)' }
 }
 function tdS(align: 'left'|'right'): React.CSSProperties {
   return { padding:'8px 14px', textAlign:align, fontFamily:'var(--mono)', whiteSpace:'nowrap' }
@@ -127,10 +127,10 @@ export default function SCFPage() {
     adtData[lbl] = {}
     for (const m of MONTH_ORDER) {
       const row = vehData.find(r=>r.fy===fy&&r.cal_month===m)
-      adtData[lbl][MONTH_ABBR[m]] = row ? (row as Record<string,number>)[metricCol] : null
+      adtData[lbl][MONTH_ABBR[m]] = row ? (metricCol === 'adt_pcu' ? row.adt_pcu : row.adt_count) : null
     }
     if (completeFYs.includes(fy)) {
-      const total = vehData.filter(r=>r.fy===fy).reduce((s,r)=>s+(r as Record<string,number>)[totalCol],0)
+      const total = vehData.filter(r=>r.fy===fy).reduce((s,r)=> s + (totalCol === 'total_pcu' ? r.total_pcu : r.total_count), 0)
       aadtByFY[lbl] = Math.round(total/365)
     } else {
       aadtByFY[lbl] = null
@@ -145,8 +145,9 @@ export default function SCFPage() {
     scfData[lbl] = {}
     for (const m of MONTH_ORDER) {
       const row = vehData.find(r=>r.fy===fy&&r.cal_month===m)
-      if (row && aadt && (row as Record<string,number>)[metricCol]>0) {
-        scfData[lbl][MONTH_ABBR[m]] = +(aadt/(row as Record<string,number>)[metricCol]).toFixed(4)
+      const val = row ? (metricCol === 'adt_pcu' ? row.adt_pcu : row.adt_count) : 0
+      if (row && aadt && val > 0) {
+        scfData[lbl][MONTH_ABBR[m]] = +(aadt / val).toFixed(4)
       } else {
         scfData[lbl][MONTH_ABBR[m]] = null
       }
@@ -190,11 +191,11 @@ export default function SCFPage() {
         <>
           {/* Complete FY badges */}
           <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:20, flexWrap:'wrap' }}>
-            <span style={{ fontSize:11, color:'var(--text-dim)', letterSpacing:'0.04em' }}>COMPLETE FINANCIAL YEARS</span>
+            <span style={{ fontSize:11, color:'#b0bac8', letterSpacing:'0.04em' }}>COMPLETE FINANCIAL YEARS</span>
             {completeFYs.length===0
-              ? <span style={{ fontSize:11, color:'var(--negative)', fontFamily:'var(--mono)' }}>None — SCF unavailable</span>
+              ? <span style={{ fontSize:11, color:'#c94f4f', fontFamily:'var(--mono)' }}>None — SCF unavailable</span>
               : completeFYs.map(fy=>(
-                  <span key={fy} style={{ fontSize:11, color:'var(--positive)', fontFamily:'var(--mono)', background:'#18977a12', padding:'2px 8px', borderRadius:'var(--radius)', border:'1px solid #18977a30' }}>
+                  <span key={fy} style={{ fontSize:11, color:'#16a085', fontFamily:'var(--mono)', background:'#18977a12', padding:'2px 8px', borderRadius:'var(--radius)', border:'1px solid #18977a30' }}>
                     {fyLabel(fy)}
                   </span>
                 ))
@@ -227,11 +228,11 @@ export default function SCFPage() {
               {[
                 { label:'< 0.85  Peak',        color:'#18977a' },
                 { label:'0.85–0.95  Near-peak', color:'#2aa87e' },
-                { label:'0.95–1.05  Average',   color:'var(--text-sub)' },
+                { label:'0.95–1.05  Average',   color:'#8995a8' },
                 { label:'1.05–1.15  Lean',      color:'#d97706' },
                 { label:'> 1.15  Very lean',    color:'#c94f4f' },
               ].map(b=>(
-                <div key={b.label} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'var(--text-sub)' }}>
+                <div key={b.label} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#8995a8' }}>
                   <div style={{ width:8, height:8, borderRadius:'50%', background:b.color, flexShrink:0 }} />
                   {b.label}
                 </div>
