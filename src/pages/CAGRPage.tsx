@@ -6,7 +6,7 @@ import { PageHeader, NotationToggle, EmptyState } from '../components/UI'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type PartialType = 'full' | 'start' | 'end' | 'mid' | null
+type PartialType = 'full' | 'start' | 'end' | 'mid' | 'both' | null
 
 interface PlazaRow {
   plaza_name: string
