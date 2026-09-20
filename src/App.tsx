@@ -1,17 +1,19 @@
 import React, { useState } from 'react'
-import DashboardPage from './pages/DashboardPage'
-import CAGRPage      from './pages/CAGRPage'
-import SCFPage       from './pages/SCFPage'
-import StretchPage   from './pages/StretchPage'
-import AdminPage     from './pages/AdminPage'
+import DashboardPage  from './pages/DashboardPage'
+import CAGRPage       from './pages/CAGRPage'
+import SCFPage        from './pages/SCFPage'
+import StretchPage    from './pages/StretchPage'
+import StretchV2Page  from './pages/StretchV2Page'
+import AdminPage      from './pages/AdminPage'
 
-type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'admin'
+type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'stretchv2' | 'admin'
 
 const NAV = [
-  { id: 'dashboard' as Page, label: 'Dashboard',       sub: 'Network overview'    },
-  { id: 'cagr'      as Page, label: 'CAGR Analysis',   sub: 'Plaza revenue table' },
-  { id: 'scf'       as Page, label: 'SCF & ADT',       sub: 'Seasonal factors'    },
-  { id: 'stretch'   as Page, label: 'Stretch Analysis', sub: 'Compare plazas'     },
+  { id: 'dashboard' as Page, label: 'Dashboard',        sub: 'Network overview'    },
+  { id: 'cagr'      as Page, label: 'CAGR Analysis',    sub: 'Plaza revenue table' },
+  { id: 'scf'       as Page, label: 'SCF & ADT',        sub: 'Seasonal factors'    },
+  { id: 'stretch'   as Page, label: 'Stretch Analysis', sub: 'Compare plazas'      },
+  { id: 'stretchv2' as Page, label: 'Stretch V2',       sub: 'Category-aware'      },
   { id: 'admin'     as Page, label: 'Admin',            sub: 'Vehicle templates'   },
 ]
 
@@ -91,6 +93,7 @@ export default function App() {
         {page === 'cagr'      && <CAGRPage />}
         {page === 'scf'       && <SCFPage  />}
         {page === 'stretch'   && <StretchPage />}
+        {page === 'stretchv2' && <StretchV2Page />}
         {page === 'admin'     && <AdminPage />}
       </main>
     </div>
