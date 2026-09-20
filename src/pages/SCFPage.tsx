@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { usePlazaList } from '../hooks/usePlazaList'
 import { useSCF } from '../hooks/useSCF'
+import { useConcessionaires } from '../hooks/useConcessionaires'
 import { MONTH_ORDER, MONTH_ABBR } from '../lib/formatters'
 import { PageHeader, FilterRow, FilterSelect, SectionCard, EmptyState } from '../components/UI'
 
@@ -79,10 +80,23 @@ function tdS(align: 'left'|'right'): React.CSSProperties {
 }
 
 export default function SCFPage() {
-  const { plazas, loading: plLoading } = usePlazaList()
-  const [selectedPlaza, setSelectedPlaza] = useState('')
-  const [selVeh,        setSelVeh]        = useState<VehKey>('ALL')
-  const [metricMode,    setMetricMode]    = useState<'PCU'|'Traffic'>('PCU')
+  const { plazas: allPlazas, loading: plLoading } = usePlazaList()
+  const { concessionaires, getSpvs, getPlazas } = useConcessionaires()
+
+  const [concessionaire, setConcessionaire] = useState('All')
+  const [spv,            setSpv]            = useState('All')
+  const [selectedPlaza,  setSelectedPlaza]  = useState('')
+  const [selVeh,         setSelVeh]         = useState<VehKey>('ALL')
+  const [metricMode,     setMetricMode]     = useState<'PCU'|'Traffic'>('PCU')
+
+  // Cascading
+  const spvOptions     = getSpvs(concessionaire)
+  const filteredPlazas = (concessionaire === 'All' && spv === 'All')
+    ? allPlazas
+    : getPlazas(concessionaire, spv)
+
+  function handleConcChange(val: string) { setConcessionaire(val); setSpv('All'); setSelectedPlaza('') }
+  function handleSpvChange(val: string)  { setSpv(val); setSelectedPlaza('') }
 
   const { data: rawData, loading, error } = useSCF(selectedPlaza)
 
@@ -166,8 +180,16 @@ export default function SCFPage() {
 
       <FilterRow>
         <FilterSelect
-          label="Plaza" value={selectedPlaza} onChange={setSelectedPlaza} width={280}
-          options={[{value:'',label:'— Select a plaza —'},...(plLoading?[]:(plazas.map(p=>({value:p,label:p}))))]}
+          label="Concessionaire" value={concessionaire} onChange={handleConcChange} width={200}
+          options={[{value:'All',label:'All Concessionaires'},...concessionaires.map(c=>({value:c,label:c}))]}
+        />
+        <FilterSelect
+          label="SPV / Project" value={spv} onChange={handleSpvChange} width={180}
+          options={[{value:'All',label: concessionaire==='All' ? 'All SPVs' : `All (${concessionaire})`},...spvOptions.map(s=>({value:s,label:s}))]}
+        />
+        <FilterSelect
+          label="Plaza" value={selectedPlaza} onChange={setSelectedPlaza} width={260}
+          options={[{value:'',label:'— Select a plaza —'},...(plLoading?[]:filteredPlazas.map(p=>({value:p,label:p})))]}
         />
         <FilterSelect
           label="Vehicle Class" value={selVeh} onChange={v=>setSelVeh(v as VehKey)} width={180}
