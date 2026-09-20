@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { useCAGR, type CAGRSummaryRow } from '../hooks/useCAGR'
+import { usePlazaList } from '../hooks/usePlazaList'
 import { useConcessionaires } from '../hooks/useConcessionaires'
 import { fmtNum, type Notation } from '../lib/formatters'
 import { PageHeader, NotationToggle, EmptyState } from '../components/UI'
@@ -119,25 +120,52 @@ function partialColor(partial: PartialType): string | undefined {
 
 export default function CAGRPage() {
   const { data, loading, error } = useCAGR()
+  const { plazas: allPlazas }    = usePlazaList()
   const { concessionaires, getSpvs, getPlazas } = useConcessionaires()
 
-  const [notation,       setNotation]       = useState<Notation>('Indian')
-  const [search,         setSearch]         = useState('')
-  const [concessionaire, setConcessionaire] = useState('All')
-  const [spv,            setSpv]            = useState('All')
+  const [notation,        setNotation]        = useState<Notation>('Indian')
+  const [search,          setSearch]          = useState('')
+  const [concessionaire,  setConcessionaire]  = useState('All')
+  const [spv,             setSpv]             = useState('All')
+  const [selectedPlazas,  setSelectedPlazas]  = useState<string[]>([])
+  const [plazaSearch,     setPlazaSearch]     = useState('')
+  const [plazaDropOpen,   setPlazaDropOpen]   = useState(false)
+
+  const plazaDropRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (plazaDropRef.current && !plazaDropRef.current.contains(e.target as Node))
+        setPlazaDropOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
 
   // Cascading
   const spvOptions     = getSpvs(concessionaire)
-  const concPlazas     = (concessionaire === 'All' && spv === 'All')
-    ? null
-    : new Set(getPlazas(concessionaire, spv).map(p => p.toLowerCase().trim()))
+  const filteredPlazas = (concessionaire === 'All' && spv === 'All')
+    ? allPlazas
+    : getPlazas(concessionaire, spv)
 
-  function handleConcChange(val: string) { setConcessionaire(val); setSpv('All') }
+  const concPlazaSet = (concessionaire === 'All' && spv === 'All')
+    ? null
+    : new Set(filteredPlazas.map(p => p.toLowerCase().trim()))
+
+  function handleConcChange(val: string) { setConcessionaire(val); setSpv('All'); setSelectedPlazas([]) }
+  function handleSpvChange(val: string)  { setSpv(val); setSelectedPlazas([]) }
+  function togglePlaza(p: string) {
+    setSelectedPlazas(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
+  }
 
   const filtered = useMemo(() => {
-    if (concPlazas) return data.filter(r => concPlazas.has(r.plaza_name.toLowerCase().trim()))
-    return data
-  }, [data, concPlazas])
+    let d = data
+    if (concPlazaSet) d = d.filter(r => concPlazaSet.has(r.plaza_name.toLowerCase().trim()))
+    if (selectedPlazas.length > 0) {
+      const sel = new Set(selectedPlazas.map(p => p.toLowerCase().trim()))
+      d = d.filter(r => sel.has(r.plaza_name.toLowerCase().trim()))
+    }
+    return d
+  }, [data, concPlazaSet, selectedPlazas])
 
   const { rows, allFYs } = useMemo(() => buildPlazaRows(filtered), [filtered])
 
@@ -177,14 +205,86 @@ export default function CAGRPage() {
         {/* SPV */}
         <div style={filterWrap}>
           <label style={lblStyle}>SPV / Project</label>
-          <select value={spv} onChange={e => setSpv(e.target.value)} style={selStyle}>
+          <select value={spv} onChange={e => handleSpvChange(e.target.value)} style={selStyle}>
             <option value="All">All SPVs</option>
             {spvOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        {/* Search */}
-        <div style={{ ...filterWrap, flex: '2 1 240px' }}>
-          <label style={lblStyle}>Search Plaza / PIU / RO</label>
+        {/* Plaza multi-select */}
+        <div ref={plazaDropRef} style={{ flex: '2 1 280px', position: 'relative' }}>
+          <label style={lblStyle}>Filter by Plaza</label>
+          <div
+            onClick={() => setPlazaDropOpen(o => !o)}
+            style={{
+              background: '#f4f6f9', border: '1px solid #dde2ea', borderRadius: 4,
+              padding: '5px 10px', cursor: 'pointer', minHeight: 34,
+              display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center',
+            }}
+          >
+            {selectedPlazas.length === 0 && (
+              <span style={{ color: '#b0bac8', fontSize: 12 }}>All plazas — click to filter</span>
+            )}
+            {selectedPlazas.map(p => (
+              <span key={p} style={{
+                background: '#1a2540', color: '#fff', borderRadius: 3,
+                padding: '1px 6px', fontSize: 11, display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                {p}
+                <span onClick={e => { e.stopPropagation(); togglePlaza(p) }}
+                  style={{ cursor: 'pointer', fontWeight: 700 }}>×</span>
+              </span>
+            ))}
+          </div>
+          {plazaDropOpen && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+              background: '#fff', border: '1px solid #e2e6ed', borderRadius: 4,
+              boxShadow: '0 4px 16px #1a254020', maxHeight: 260, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+            }}>
+              <div style={{ padding: '6px 10px', borderBottom: '1px solid #e2e6ed' }}>
+                <input autoFocus value={plazaSearch} onChange={e => setPlazaSearch(e.target.value)}
+                  placeholder="Search plaza…"
+                  style={{ width: '100%', border: '1px solid #dde2ea', borderRadius: 4, padding: '4px 8px', fontSize: 12, outline: 'none', fontFamily: 'DM Sans', background: '#f4f6f9' }}
+                />
+              </div>
+              {selectedPlazas.length > 0 && (
+                <div onClick={() => { setSelectedPlazas([]); setPlazaDropOpen(false) }}
+                  style={{ padding: '6px 14px', fontSize: 11, color: '#c94f4f', cursor: 'pointer', borderBottom: '1px solid #f0f2f5', fontWeight: 600 }}>
+                  Clear selection ({selectedPlazas.length})
+                </div>
+              )}
+              <div style={{ overflowY: 'auto', flex: 1 }}>
+                {filteredPlazas
+                  .filter(p => p.toLowerCase().includes(plazaSearch.toLowerCase()))
+                  .map(p => (
+                    <div key={p} onClick={() => { togglePlaza(p); setPlazaSearch('') }}
+                      style={{
+                        padding: '7px 14px', fontSize: 12, cursor: 'pointer',
+                        color: '#1a2540', display: 'flex', alignItems: 'center', gap: 8,
+                        background: selectedPlazas.includes(p) ? '#f0f4ff' : '#fff',
+                      }}
+                      onMouseEnter={e => { if (!selectedPlazas.includes(p)) e.currentTarget.style.background = '#f4f6f9' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = selectedPlazas.includes(p) ? '#f0f4ff' : '#fff' }}
+                    >
+                      <span style={{
+                        width: 14, height: 14, border: '1px solid #dde2ea', borderRadius: 3, flexShrink: 0,
+                        background: selectedPlazas.includes(p) ? '#1a2540' : '#fff',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {selectedPlazas.includes(p) && <span style={{ color: '#fff', fontSize: 9, fontWeight: 700 }}>✓</span>}
+                      </span>
+                      {p}
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Text search */}
+        <div style={{ ...filterWrap, flex: '1 1 200px' }}>
+          <label style={lblStyle}>Search PIU / RO</label>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -203,9 +303,16 @@ export default function CAGRPage() {
       </div>
 
       {/* Count */}
-      <div style={{ fontSize: 12, color: '#8995a8', marginBottom: 10 }}>
-        <strong style={{ color: '#1a2540' }}>{displayRows.length.toLocaleString('en-IN')}</strong> plazas
-        {search && ` matching "${search}"`}
+      <div style={{ fontSize: 12, color: '#8995a8', marginBottom: 10, display: 'flex', gap: 12, alignItems: 'center' }}>
+        <span><strong style={{ color: '#1a2540' }}>{displayRows.length.toLocaleString('en-IN')}</strong> plazas</span>
+        {selectedPlazas.length > 0 && (
+          <span style={{ color: '#e07b10', fontSize: 11 }}>
+            {selectedPlazas.length} selected
+            <span onClick={() => setSelectedPlazas([])}
+              style={{ marginLeft: 6, cursor: 'pointer', color: '#c94f4f', fontWeight: 600 }}>× Clear</span>
+          </span>
+        )}
+        {search && <span>matching "{search}"</span>}
       </div>
 
       {/* Table */}
@@ -216,10 +323,10 @@ export default function CAGRPage() {
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr>
-                  {['Plaza', 'PIU', 'RO', ...allFYs, 'CAGR', 'YoY%', 'CAGR Period'].map(h => (
+                  {['Plaza', ...allFYs, 'CAGR', 'YoY%', 'CAGR Period', 'PIU', 'RO'].map(h => (
                     <th key={h} style={{
                       padding: '9px 12px',
-                      textAlign: ['Plaza', 'PIU', 'RO', 'CAGR Period'].includes(h) ? 'left' : 'right',
+                      textAlign: ['Plaza', 'CAGR Period', 'PIU', 'RO'].includes(h) ? 'left' : 'right',
                       background: '#f8f9fb',
                       color: '#a0aabc',
                       fontWeight: 600,
@@ -241,8 +348,6 @@ export default function CAGRPage() {
                   }}>
                     {/* Plaza */}
                     <td style={{ ...td('left'), fontWeight: 600, color: '#1a2540', minWidth: 220 }}>{row.plaza_name}</td>
-                    <td style={{ ...td('left'), color: '#8995a8', minWidth: 90 }}>{row.piu || '—'}</td>
-                    <td style={{ ...td('left'), color: '#8995a8', minWidth: 90 }}>{row.ro  || '—'}</td>
 
                     {/* FY columns */}
                     {allFYs.map(fy => {
@@ -289,6 +394,10 @@ export default function CAGRPage() {
 
                     {/* CAGR Period */}
                     <td style={{ ...td('left'), color: '#8995a8', minWidth: 160 }}>{row.cagrPeriod}</td>
+
+                    {/* PIU and RO — moved to end */}
+                    <td style={{ ...td('left'), color: '#8995a8', minWidth: 100 }}>{row.piu || '—'}</td>
+                    <td style={{ ...td('left'), color: '#8995a8', minWidth: 100 }}>{row.ro  || '—'}</td>
                   </tr>
                 ))}
               </tbody>

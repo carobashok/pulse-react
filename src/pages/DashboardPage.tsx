@@ -11,14 +11,12 @@ import { scaleSeries, fmtNum, MONTH_ORDER, MONTH_ABBR, DIVISORS, type Notation }
 import {
   PageHeader, FilterRow, FilterSelect,
   KPIStrip, KPICard, SectionCard,
-  ChartTooltip, EmptyState, NotationToggle, DataTable,
+  ChartTooltip, EmptyState, NotationToggle,
 } from '../components/UI'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function fySort(a: string, b: string) { return a.localeCompare(b) }
-function fyStartYear(fy: string) { const m = fy.match(/(\d{4})/); return m ? parseInt(m[1]) : 0 }
-function calcCAGR(s: number, e: number, y: number) { return (!s || y <= 0) ? null : (Math.pow(e / s, 1 / y) - 1) * 100 }
 function fmtTick(v: number, lbl: string) {
   const n = +v
   const fmt = n >= 1000 ? Math.round(n).toLocaleString('en-IN') : n >= 10 ? n.toFixed(1) : n.toFixed(2)
@@ -64,6 +62,7 @@ export default function DashboardPage() {
   const [notation,       setNotation]       = useState<Notation>('Indian')
   const [metricMode,     setMetricMode]     = useState<'PCU' | 'Traffic'>('PCU')
   const [compareMode,    setCompareMode]    = useState<'all' | 'common'>('all')
+  const [trendView,      setTrendView]      = useState<'fy' | 'continuous'>('fy')
 
   const { data: allData, loading, error } = useCAGRMonthly(plaza)
 
@@ -236,24 +235,6 @@ export default function DashboardPage() {
 
   const currFY = fyWithDaily.find(r => r.fy === latestFY)
 
-  // ── CAGR ──
-  const cagrRows = useMemo(() => {
-    if (fyWithDaily.length < 2) return []
-    const base = fyWithDaily[0]
-    return fyWithDaily.slice(1).map(curr => {
-      const yrs = fyStartYear(curr.fy) - fyStartYear(base.fy)
-      return {
-        period: `${base.fy} → ${curr.fy}`,
-        years: yrs,
-        rev:  calcCAGR(base.amount, curr.amount, yrs),
-        pcu:  calcCAGR(base.pcu,    curr.pcu,    yrs),
-        cnt:  calcCAGR(base.count,  curr.count,  yrs),
-        adrr: calcCAGR(base.adrr,   curr.adrr,   yrs),
-        adpcu:calcCAGR(base.adpcu,  curr.adpcu,  yrs),
-      }
-    })
-  }, [fyWithDaily])
-
   // ── Scale ──
   const safeScale = (vals: number[], notation: Notation, isCount = false) =>
     vals.length && vals.some(v => v > 0)
@@ -276,6 +257,10 @@ export default function DashboardPage() {
   const fysInMonthly = [...new Set(monthly.map(m => m.fy))].sort(fySort)
   const mRevChart  = MONTH_ORDER.map(m => { const e: Record<string, string | number | null> = { month: MONTH_ABBR[m] }; for (const fy of fysInMonthly) { const rows = monthly.filter(r => r.fy === fy && r.cal_month === m); e[fy] = rows.length ? mRevSc[monthly.indexOf(rows[0])] ?? null : null }; return e })
   const mTrafChart = MONTH_ORDER.map(m => { const e: Record<string, string | number | null> = { month: MONTH_ABBR[m] }; for (const fy of fysInMonthly) { const rows = monthly.filter(r => r.fy === fy && r.cal_month === m); e[fy] = rows.length ? mTrafSc[monthly.indexOf(rows[0])] ?? null : null }; return e })
+
+  // Continuous chart data — chronological x-axis
+  const mRevContChart  = monthly.map((r, i) => ({ month: r.month_str, ADRR:  mRevSc[i]  ?? null }))
+  const mTrafContChart = monthly.map((r, i) => ({ month: r.month_str, [usePCU ? 'ADPCU' : 'ADTV']: mTrafSc[i] ?? null }))
 
   if (loading) return <PageWrap><EmptyState message="Loading data…" /></PageWrap>
   if (error)   return <PageWrap><EmptyState message={`Error: ${error}`} /></PageWrap>
@@ -433,76 +418,80 @@ export default function DashboardPage() {
       </SectionCard>
 
       {/* Monthly trends */}
+      {/* Toggle */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <div style={{ display: 'flex', border: '1px solid #dde2ea', borderRadius: 4, overflow: 'hidden', fontSize: 11 }}>
+          {([['fy', 'By Financial Year'], ['continuous', 'Continuous']] as [string, string][]).map(([val, lbl]) => (
+            <button key={val} onClick={() => setTrendView(val as 'fy' | 'continuous')} style={{
+              padding: '5px 14px', background: trendView === val ? '#1a2540' : '#fff',
+              color: trendView === val ? '#fff' : '#8995a8',
+              border: 'none', cursor: 'pointer', fontFamily: 'DM Sans',
+              fontSize: 11, fontWeight: trendView === val ? 600 : 400,
+            }}>{lbl}</button>
+          ))}
+        </div>
+      </div>
+
       <SectionCard title={`Monthly ADRR Trend  ·  Avg Daily Revenue  ·  ${mRevTitle}`}>
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={mRevChart}>
-            <CartesianGrid strokeDasharray="2 4" stroke="#e8edf2" vertical={false} />
-            <XAxis dataKey="month" tick={xStyle} axisLine={false} tickLine={false} />
-            <YAxis tick={yStyle} axisLine={false} tickLine={false} tickFormatter={v => fmtTick(v, mRevLbl)} width={72} />
-            <Tooltip content={<ChartTooltip unit={mRevLbl} />} cursor={{ stroke: '#dde2ea' }} />
-            <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'DM Sans' }} />
-            {fysInMonthly.map((fy, i) => (
-              <Line key={fy} type="monotone" dataKey={fy}
-                stroke={CHART_COLORS[Math.min(i, CHART_COLORS.length - 1)]}
-                strokeWidth={fy === latestFY ? 2.5 : 1.5}
-                dot={false} connectNulls={false}
-                strokeOpacity={fy === latestFY ? 1 : 0.65}
-              />
-            ))}
-          </LineChart>
+          {trendView === 'fy' ? (
+            <LineChart data={mRevChart}>
+              <CartesianGrid strokeDasharray="2 4" stroke="#e8edf2" vertical={false} />
+              <XAxis dataKey="month" tick={xStyle} axisLine={false} tickLine={false} />
+              <YAxis tick={yStyle} axisLine={false} tickLine={false} tickFormatter={v => fmtTick(v, mRevLbl)} width={72} />
+              <Tooltip content={<ChartTooltip unit={mRevLbl} />} cursor={{ stroke: '#dde2ea' }} />
+              <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'DM Sans' }} />
+              {fysInMonthly.map((fy, i) => (
+                <Line key={fy} type="monotone" dataKey={fy}
+                  stroke={CHART_COLORS[Math.min(i, CHART_COLORS.length - 1)]}
+                  strokeWidth={fy === latestFY ? 2.5 : 1.5}
+                  dot={false} connectNulls={false}
+                  strokeOpacity={fy === latestFY ? 1 : 0.65}
+                />
+              ))}
+            </LineChart>
+          ) : (
+            <LineChart data={mRevContChart}>
+              <CartesianGrid strokeDasharray="2 4" stroke="#e8edf2" vertical={false} />
+              <XAxis dataKey="month" tick={xStyle} axisLine={false} tickLine={false} interval={Math.floor(mRevContChart.length / 12)} />
+              <YAxis tick={yStyle} axisLine={false} tickLine={false} tickFormatter={v => fmtTick(v, mRevLbl)} width={72} />
+              <Tooltip content={<ChartTooltip unit={mRevLbl} />} cursor={{ stroke: '#dde2ea' }} />
+              <Line type="monotone" dataKey="ADRR" name="ADRR"
+                stroke="#e07b10" strokeWidth={2} dot={false} connectNulls={false} />
+            </LineChart>
+          )}
         </ResponsiveContainer>
       </SectionCard>
 
       <SectionCard title={`Monthly ${usePCU ? 'ADPCU' : 'ADTV'} Trend  ·  Avg Daily ${usePCU ? 'PCU' : 'Traffic'}  ·  ${mTrafTitle}`}>
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={mTrafChart}>
-            <CartesianGrid strokeDasharray="2 4" stroke="#e8edf2" vertical={false} />
-            <XAxis dataKey="month" tick={xStyle} axisLine={false} tickLine={false} />
-            <YAxis tick={yStyle} axisLine={false} tickLine={false} tickFormatter={v => fmtTick(v, mTrafLbl)} width={72} />
-            <Tooltip content={<ChartTooltip unit={mTrafLbl} />} cursor={{ stroke: '#dde2ea' }} />
-            <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'DM Sans' }} />
-            {fysInMonthly.map((fy, i) => (
-              <Line key={fy} type="monotone" dataKey={fy}
-                stroke={CHART_COLORS[Math.min(i, CHART_COLORS.length - 1)]}
-                strokeWidth={fy === latestFY ? 2.5 : 1.5}
-                dot={false} connectNulls={false}
-                strokeOpacity={fy === latestFY ? 1 : 0.65}
-              />
-            ))}
-          </LineChart>
+          {trendView === 'fy' ? (
+            <LineChart data={mTrafChart}>
+              <CartesianGrid strokeDasharray="2 4" stroke="#e8edf2" vertical={false} />
+              <XAxis dataKey="month" tick={xStyle} axisLine={false} tickLine={false} />
+              <YAxis tick={yStyle} axisLine={false} tickLine={false} tickFormatter={v => fmtTick(v, mTrafLbl)} width={72} />
+              <Tooltip content={<ChartTooltip unit={mTrafLbl} />} cursor={{ stroke: '#dde2ea' }} />
+              <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'DM Sans' }} />
+              {fysInMonthly.map((fy, i) => (
+                <Line key={fy} type="monotone" dataKey={fy}
+                  stroke={CHART_COLORS[Math.min(i, CHART_COLORS.length - 1)]}
+                  strokeWidth={fy === latestFY ? 2.5 : 1.5}
+                  dot={false} connectNulls={false}
+                  strokeOpacity={fy === latestFY ? 1 : 0.65}
+                />
+              ))}
+            </LineChart>
+          ) : (
+            <LineChart data={mTrafContChart}>
+              <CartesianGrid strokeDasharray="2 4" stroke="#e8edf2" vertical={false} />
+              <XAxis dataKey="month" tick={xStyle} axisLine={false} tickLine={false} interval={Math.floor(mTrafContChart.length / 12)} />
+              <YAxis tick={yStyle} axisLine={false} tickLine={false} tickFormatter={v => fmtTick(v, mTrafLbl)} width={72} />
+              <Tooltip content={<ChartTooltip unit={mTrafLbl} />} cursor={{ stroke: '#dde2ea' }} />
+              <Line type="monotone" dataKey={usePCU ? 'ADPCU' : 'ADTV'} name={usePCU ? 'ADPCU' : 'ADTV'}
+                stroke="#3d7ab5" strokeWidth={2} dot={false} connectNulls={false} />
+            </LineChart>
+          )}
         </ResponsiveContainer>
-      </SectionCard>
-
-      {/* CAGR Table */}
-      <SectionCard title="CAGR Summary" flush>
-        {cagrRows.length === 0
-          ? <EmptyState message="Need at least 2 financial years of data" />
-          : <DataTable
-              cols={[
-                { key: 'period', label: 'Period',        align: 'left', mono: false },
-                { key: 'years',  label: 'Yrs',           align: 'right' },
-                { key: 'rev',    label: 'Revenue CAGR',  align: 'right' },
-                { key: 'pcu',    label: 'PCU CAGR',      align: 'right' },
-                { key: 'cnt',    label: 'Vehicle CAGR',  align: 'right' },
-                { key: 'adrr',   label: 'ADRR CAGR',    align: 'right' },
-                { key: 'adpcu',  label: 'ADPCU CAGR',   align: 'right' },
-              ]}
-              rows={cagrRows.map(r => ({
-                period: r.period,
-                years:  r.years,
-                rev:    r.rev   != null ? `${r.rev   >= 0 ? '+' : ''}${r.rev  .toFixed(2)}%` : null,
-                pcu:    r.pcu   != null ? `${r.pcu   >= 0 ? '+' : ''}${r.pcu  .toFixed(2)}%` : null,
-                cnt:    r.cnt   != null ? `${r.cnt   >= 0 ? '+' : ''}${r.cnt  .toFixed(2)}%` : null,
-                adrr:   r.adrr  != null ? `${r.adrr  >= 0 ? '+' : ''}${r.adrr .toFixed(2)}%` : null,
-                adpcu:  r.adpcu != null ? `${r.adpcu >= 0 ? '+' : ''}${r.adpcu.toFixed(2)}%` : null,
-              }))}
-              colorFn={(key, val) => {
-                if (!['rev', 'pcu', 'cnt', 'adrr', 'adpcu'].includes(key)) return undefined
-                if (val == null) return '#b0bac8'
-                return String(val).startsWith('+') ? '#16a085' : '#c94f4f'
-              }}
-            />
-        }
       </SectionCard>
     </PageWrap>
   )
