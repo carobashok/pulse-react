@@ -3,14 +3,16 @@ import DashboardPage from './pages/DashboardPage'
 import CAGRPage      from './pages/CAGRPage'
 import SCFPage       from './pages/SCFPage'
 import StretchPage   from './pages/StretchPage'
+import AdminPage     from './pages/AdminPage'
 
-type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch'
+type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'admin'
 
 const NAV = [
   { id: 'dashboard' as Page, label: 'Dashboard',       sub: 'Network overview'    },
   { id: 'cagr'      as Page, label: 'CAGR Analysis',   sub: 'Plaza revenue table' },
   { id: 'scf'       as Page, label: 'SCF & ADT',       sub: 'Seasonal factors'    },
   { id: 'stretch'   as Page, label: 'Stretch Analysis', sub: 'Compare plazas'     },
+  { id: 'admin'     as Page, label: 'Admin',            sub: 'Vehicle templates'   },
 ]
 
 export default function App() {
@@ -89,6 +91,7 @@ export default function App() {
         {page === 'cagr'      && <CAGRPage />}
         {page === 'scf'       && <SCFPage  />}
         {page === 'stretch'   && <StretchPage />}
+        {page === 'admin'     && <AdminPage />}
       </main>
     </div>
   )
