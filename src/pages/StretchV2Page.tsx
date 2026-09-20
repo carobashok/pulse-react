@@ -7,7 +7,9 @@ import { useStretch } from '../hooks/useStretch'
 import { usePlazaList } from '../hooks/usePlazaList'
 import { useConcessionaires } from '../hooks/useConcessionaires'
 import { useVehicleCategories } from '../hooks/useVehicleCategories'
+import { usePlazaMaster } from '../hooks/usePlazaMaster'
 import { PageHeader, EmptyState, SectionCard, ChartTooltip } from '../components/UI'
+import PlazaMap from '../components/PlazaMap'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -178,6 +180,94 @@ function ChangeTable({ title, rows, plazas }: {
   )
 }
 
+// ─── Grid table — Plaza × FY rows, month columns ─────────────────────────────
+
+const MONTH_COLS = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar']
+const MONTH_COL_MAP: Record<string, number> = {
+  Apr:1, May:2, Jun:3, Jul:4, Aug:5, Sep:6,
+  Oct:7, Nov:8, Dec:9, Jan:10, Feb:11, Mar:12,
+}
+// Maps calendar month number (1-12) to index in MONTH_COLS
+const MONTH_ORDER_IDX: Record<number, number> = {
+  4:0, 5:1, 6:2, 7:3, 8:4, 9:5, 10:6, 11:7, 12:8, 1:9, 2:10, 3:11
+}
+
+function GridTable({ title, plazaFYData, plazas }: {
+  title: string
+  // plazaFYData[plaza][fy][monthAbbr] = pct | null
+  plazaFYData: Record<string, Record<string, Record<string, number | null>>>
+  plazas: string[]
+}) {
+  const allFYs = [...new Set(
+    plazas.flatMap(p => Object.keys(plazaFYData[p] ?? {}))
+  )].sort()
+
+  return (
+    <div style={{ marginBottom: 24, background: '#fff', border: '1px solid #e2e6ed', borderRadius: 6, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid #e2e6ed', fontSize: 12, fontWeight: 600, color: '#1a2540' }}>{title}</div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: '#f8f9fb', borderBottom: '2px solid #e2e6ed' }}>
+              <th style={{ ...gthS, textAlign: 'left', minWidth: 140 }}>Plaza</th>
+              <th style={{ ...gthS, textAlign: 'left', width: 60 }}>FY</th>
+              {MONTH_COLS.map(m => <th key={m} style={gthS}>{m}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {plazas.map((plaza, pi) => {
+              const fyMap = plazaFYData[plaza] ?? {}
+              const fys   = Object.keys(fyMap).sort().reverse()
+              return fys.map((fy, fi) => (
+                <tr key={`${plaza}-${fy}`} style={{
+                  background: pi % 2 === 0 ? '#fff' : '#fafbfc',
+                  borderBottom: fi === fys.length - 1 ? '2px solid #e2e6ed' : '1px solid #f0f2f5',
+                }}>
+                  {/* Plaza name — only on first FY row */}
+                  {fi === 0 ? (
+                    <td rowSpan={fys.length} style={{
+                      padding: '7px 14px', fontWeight: 600,
+                      color: PLAZA_COLORS[pi % PLAZA_COLORS.length],
+                      verticalAlign: 'top', borderRight: '1px solid #e2e6ed',
+                      background: pi % 2 === 0 ? '#fff' : '#fafbfc',
+                    }}>{plaza}</td>
+                  ) : null}
+                  {/* FY */}
+                  <td style={{ padding: '6px 10px', color: '#8995a8', fontFamily: 'DM Sans', fontSize: 11, borderRight: '1px solid #f0f2f5' }}>
+                    {fy.replace('FY ', '')}
+                  </td>
+                  {/* Month cells */}
+                  {MONTH_COLS.map(m => {
+                    const v = fyMap[fy]?.[m] ?? null
+                    return (
+                      <td key={m} style={{
+                        padding: '6px 8px', textAlign: 'right',
+                        fontFamily: 'DM Mono', fontSize: 11,
+                        color: v === null ? '#d0d5dd' : v >= 0 ? '#16a085' : '#c94f4f',
+                        fontWeight: v !== null ? 600 : 400,
+                      }}>
+                        {v === null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+const gthS: React.CSSProperties = {
+  padding: '8px 8px', textAlign: 'right',
+  color: '#a0aabc', fontWeight: 600, fontSize: 10,
+  letterSpacing: '0.05em', textTransform: 'uppercase',
+  whiteSpace: 'nowrap', fontFamily: 'DM Sans',
+  borderBottom: '1px solid #e2e6ed',
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 export default function StretchV2Page() {
@@ -190,6 +280,10 @@ export default function StretchV2Page() {
   const [concessionaire,  setConcessionaire] = useState('All')
   const [spv,             setSpv]            = useState('All')
   const [changeCat,       setChangeCat]      = useState<string>('')
+  const [changeView,      setChangeView]     = useState<'chronological' | 'grid'>('chronological')
+  const [showMap,         setShowMap]        = useState(false)
+
+  const { data: plazaMaster } = usePlazaMaster()
 
   const spvOptions     = getSpvs(concessionaire)
   const filteredPlazas = concessionaire === 'All' && spv === 'All'
@@ -207,10 +301,9 @@ export default function StretchV2Page() {
   const minCategories    = useMemo(() => getMinCategories(),    [mappings, selectedPlazas])
   const minTemplateMap   = useMemo(() => getMinTemplateMapping(),[mappings, selectedPlazas])
 
-  // Set default change category when categories load
   useEffect(() => {
-    if (minCategories.length > 0 && !changeCat) {
-      setChangeCat(minCategories[0].display_category)
+    if (!changeCat) {
+      setChangeCat('ADPCU')
     }
   }, [minCategories])
 
@@ -250,8 +343,15 @@ export default function StretchV2Page() {
       const prevM = allMonths[allMonths.length - 2 - idx]
       const values: Record<string, number | null> = {}
       for (const plaza of selectedPlazas) {
-        const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
         const getVal = (month: string) => {
+          if (changeCat === 'ADPCU') {
+            const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month)
+            if (!rows.length) return null
+            const total = rows.reduce((s, r) => s + r.total_pcu, 0)
+            const days = rows[0]?.days_in_month ?? 30
+            return days > 0 ? total / days : null
+          }
+          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
           const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
           if (!rows.length) return null
           const total = rows.reduce((s, r) => s + r.total_count, 0)
@@ -277,8 +377,15 @@ export default function StretchV2Page() {
       const priorM = d.toISOString().slice(0, 7) + '-01'
       const values: Record<string, number | null> = {}
       for (const plaza of selectedPlazas) {
-        const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
         const getVal = (month: string) => {
+          if (changeCat === 'ADPCU') {
+            const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month)
+            if (!rows.length) return null
+            const total = rows.reduce((s, r) => s + r.total_pcu, 0)
+            const days = rows[0]?.days_in_month ?? 30
+            return days > 0 ? total / days : null
+          }
+          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
           const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
           if (!rows.length) return null
           const total = rows.reduce((s, r) => s + r.total_count, 0)
@@ -291,6 +398,85 @@ export default function StretchV2Page() {
       return { month: `${fmtMonth(m)} vs ${fmtMonth(priorM)}`, values }
     })
   }, [data, allMonths, selectedPlazas, changeCat, mappings, minCategories])
+
+  // ── Grid data — Plaza × FY × Month ──
+  const momGridData = useMemo(() => {
+    if (!changeCat) return {}
+    const result: Record<string, Record<string, Record<string, number | null>>> = {}
+    for (const plaza of selectedPlazas) {
+      result[plaza] = {}
+      const plazaMonths = allMonths.filter(m =>
+        data.some(r => r.plaza_name === plaza && r.month_date === m)
+      ).sort()
+      for (const m of plazaMonths) {
+        const d = new Date(m)
+        const cm = d.getMonth() + 1
+        const fy = cm >= 4 ? `FY ${d.getFullYear()}-${String(d.getFullYear()+1).slice(-2)}` : `FY ${d.getFullYear()-1}-${String(d.getFullYear()).slice(-2)}`
+        const mAbbr = MONTH_COLS[MONTH_ORDER_IDX[cm] ?? 0]
+        if (!result[plaza][fy]) result[plaza][fy] = {}
+        const prevIdx = plazaMonths.indexOf(m) - 1
+        if (prevIdx < 0) { result[plaza][fy][mAbbr] = null; continue }
+        const prevM = plazaMonths[prevIdx]
+        const getVal = (month: string) => {
+          if (changeCat === 'ADPCU') {
+            const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month)
+            if (!rows.length) return null
+            const total = rows.reduce((s, r) => s + r.total_pcu, 0)
+            const days = rows[0]?.days_in_month ?? 30
+            return days > 0 ? total / days : null
+          }
+          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
+          const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
+          if (!rows.length) return null
+          const total = rows.reduce((s, r) => s + r.total_count, 0)
+          const days = rows[0]?.days_in_month ?? 30
+          return days > 0 ? total / days : null
+        }
+        const curr = getVal(m); const prev = getVal(prevM)
+        result[plaza][fy][mAbbr] = curr !== null && prev !== null && prev > 0 ? +((curr/prev - 1)*100).toFixed(1) : null
+      }
+    }
+    return result
+  }, [data, allMonths, selectedPlazas, changeCat, mappings, minTemplateMap])
+
+  const yoyGridData = useMemo(() => {
+    if (!changeCat) return {}
+    const result: Record<string, Record<string, Record<string, number | null>>> = {}
+    for (const plaza of selectedPlazas) {
+      result[plaza] = {}
+      const plazaMonths = allMonths.filter(m =>
+        data.some(r => r.plaza_name === plaza && r.month_date === m)
+      ).sort()
+      for (const m of plazaMonths) {
+        const d  = new Date(m)
+        const cm = d.getMonth() + 1
+        const fy = cm >= 4 ? `FY ${d.getFullYear()}-${String(d.getFullYear()+1).slice(-2)}` : `FY ${d.getFullYear()-1}-${String(d.getFullYear()).slice(-2)}`
+        const mAbbr = MONTH_COLS[MONTH_ORDER_IDX[cm] ?? 0]
+        if (!result[plaza][fy]) result[plaza][fy] = {}
+        const pd = new Date(m); pd.setFullYear(pd.getFullYear() - 1)
+        const priorM = pd.toISOString().slice(0,7) + '-01'
+        if (!plazaMonths.includes(priorM)) { result[plaza][fy][mAbbr] = null; continue }
+        const getVal = (month: string) => {
+          if (changeCat === 'ADPCU') {
+            const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month)
+            if (!rows.length) return null
+            const total = rows.reduce((s, r) => s + r.total_pcu, 0)
+            const days = rows[0]?.days_in_month ?? 30
+            return days > 0 ? total / days : null
+          }
+          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
+          const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
+          if (!rows.length) return null
+          const total = rows.reduce((s, r) => s + r.total_count, 0)
+          const days = rows[0]?.days_in_month ?? 30
+          return days > 0 ? total / days : null
+        }
+        const curr = getVal(m); const prior = getVal(priorM)
+        result[plaza][fy][mAbbr] = curr !== null && prior !== null && prior > 0 ? +((curr/prior - 1)*100).toFixed(1) : null
+      }
+    }
+    return result
+  }, [data, allMonths, selectedPlazas, changeCat, mappings, minTemplateMap])
 
   const isLoading = loading || mapLoading
 
@@ -329,6 +515,52 @@ export default function StretchV2Page() {
       {selectedPlazas.length === 0 && <EmptyState message="Select at least one plaza to begin analysis" />}
       {selectedPlazas.length > 0 && isLoading && <EmptyState message="Loading data…" />}
       {selectedPlazas.length > 0 && error && <EmptyState message={`Error: ${error}`} />}
+
+      {/* Map toggle — always visible when plazas selected */}
+      {selectedPlazas.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <button
+            onClick={() => setShowMap(s => !s)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: showMap ? '#1a2540' : '#fff',
+              border: '1px solid #dde2ea', borderRadius: 4,
+              color: showMap ? '#fff' : '#8995a8',
+              padding: '6px 14px', fontSize: 12, cursor: 'pointer',
+              fontFamily: 'DM Sans', fontWeight: showMap ? 600 : 400,
+            }}
+          >
+            <span>🗺</span>
+            {showMap ? 'Hide Map' : 'Show Map'}
+          </button>
+        </div>
+      )}
+
+      {/* Map panel */}
+      {showMap && selectedPlazas.length > 0 && (() => {
+        const mapPlazas = plazaMaster.filter(p =>
+          selectedPlazas.some(n => n.toLowerCase().trim() === p.plaza_name.toLowerCase().trim())
+        )
+        const allConcessionPlazas = plazaMaster.filter(p =>
+          (concessionaire === 'All' && spv === 'All')
+            ? selectedPlazas.some(n => n.toLowerCase().trim() === p.plaza_name.toLowerCase().trim())
+            : filteredPlazas.some(n => n.toLowerCase().trim() === p.plaza_name.toLowerCase().trim())
+        )
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <PlazaMap
+              plazas={allConcessionPlazas.length > 0 ? allConcessionPlazas : mapPlazas}
+              highlightPlazas={selectedPlazas}
+              height={340}
+            />
+            {mapPlazas.length === 0 && (
+              <div style={{ fontSize: 11, color: '#b0bac8', marginTop: 6 }}>
+                No coordinates available for these plazas
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {selectedPlazas.length > 0 && !isLoading && !error && (
         <>
@@ -387,23 +619,47 @@ export default function StretchV2Page() {
           {/* Tab 2 — MoM & YoY */}
           {activeTab === 'changes' && (
             <>
-              {/* Category selector */}
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 16 }}>
-                {minCategories.map(cat => (
-                  <button key={cat.display_category}
-                    onClick={() => setChangeCat(cat.display_category)}
-                    style={{
-                      padding: '5px 12px', fontSize: 11, fontFamily: 'DM Sans',
-                      background: changeCat === cat.display_category ? '#1a2540' : '#fff',
-                      color: changeCat === cat.display_category ? '#fff' : '#8995a8',
-                      border: '1px solid #dde2ea', borderRadius: 4,
-                      cursor: 'pointer', fontWeight: changeCat === cat.display_category ? 600 : 400,
-                    }}>{cat.display_category}</button>
-                ))}
+              {/* Controls row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {/* ADPCU first, then vehicle categories */}
+                  {[{ display_category: 'ADPCU', display_order: 0 }, ...minCategories].map(cat => (
+                    <button key={cat.display_category}
+                      onClick={() => setChangeCat(cat.display_category)}
+                      style={{
+                        padding: '5px 12px', fontSize: 11, fontFamily: 'DM Sans',
+                        background: changeCat === cat.display_category ? '#1a2540' : '#fff',
+                        color: changeCat === cat.display_category ? '#fff' : '#8995a8',
+                        border: '1px solid #dde2ea', borderRadius: 4,
+                        cursor: 'pointer', fontWeight: changeCat === cat.display_category ? 600 : 400,
+                      }}>{cat.display_category}</button>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', border: '1px solid #dde2ea', borderRadius: 4, overflow: 'hidden' }}>
+                  {(['chronological', 'FY × Month Grid'] as const).map((val, i) => (
+                    <button key={val} onClick={() => setChangeView(i === 0 ? 'chronological' : 'grid')} style={{
+                      padding: '5px 14px',
+                      background: (i === 0 ? changeView === 'chronological' : changeView === 'grid') ? '#1a2540' : '#fff',
+                      color: (i === 0 ? changeView === 'chronological' : changeView === 'grid') ? '#fff' : '#8995a8',
+                      border: 'none', cursor: 'pointer', fontFamily: 'DM Sans', fontSize: 11,
+                      fontWeight: (i === 0 ? changeView === 'chronological' : changeView === 'grid') ? 600 : 400,
+                    }}>{val}</button>
+                  ))}
+                </div>
               </div>
 
-              <ChangeTable title="Month-on-Month % Change" rows={momRows} plazas={selectedPlazas} />
-              <ChangeTable title="Year-on-Year % Change (same month prior year)" rows={yoyRows} plazas={selectedPlazas} />
+              {changeView === 'chronological' && (
+                <>
+                  <ChangeTable title="Month-on-Month % Change" rows={momRows} plazas={selectedPlazas} />
+                  <ChangeTable title="Year-on-Year % Change (same month prior year)" rows={yoyRows} plazas={selectedPlazas} />
+                </>
+              )}
+              {changeView === 'grid' && (
+                <>
+                  <GridTable title="Month-on-Month % Change" plazaFYData={momGridData} plazas={selectedPlazas} />
+                  <GridTable title="Year-on-Year % Change (same month prior year)" plazaFYData={yoyGridData} plazas={selectedPlazas} />
+                </>
+              )}
             </>
           )}
         </>

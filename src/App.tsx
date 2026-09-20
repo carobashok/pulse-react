@@ -5,8 +5,9 @@ import SCFPage        from './pages/SCFPage'
 import StretchPage    from './pages/StretchPage'
 import StretchV2Page  from './pages/StretchV2Page'
 import AdminPage      from './pages/AdminPage'
+import MapPage        from './pages/MapPage'
 
-type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'stretchv2' | 'admin'
+type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'stretchv2' | 'map' | 'admin'
 
 const NAV = [
   { id: 'dashboard' as Page, label: 'Dashboard',        sub: 'Network overview'    },
@@ -14,6 +15,7 @@ const NAV = [
   { id: 'scf'       as Page, label: 'SCF & ADT',        sub: 'Seasonal factors'    },
   { id: 'stretch'   as Page, label: 'Stretch Analysis', sub: 'Compare plazas'      },
   { id: 'stretchv2' as Page, label: 'Stretch V2',       sub: 'Category-aware'      },
+  { id: 'map'       as Page, label: 'Plaza Map',        sub: 'All toll locations'  },
   { id: 'admin'     as Page, label: 'Admin',            sub: 'Vehicle templates'   },
 ]
 
@@ -94,6 +96,7 @@ export default function App() {
         {page === 'scf'       && <SCFPage  />}
         {page === 'stretch'   && <StretchPage />}
         {page === 'stretchv2' && <StretchV2Page />}
+        {page === 'map'       && <MapPage />}
         {page === 'admin'     && <AdminPage />}
       </main>
     </div>
