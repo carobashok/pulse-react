@@ -279,9 +279,20 @@ export default function StretchV2Page() {
   const [activeTab,       setActiveTab]      = useState<'trends' | 'changes'>('trends')
   const [concessionaire,  setConcessionaire] = useState('All')
   const [spv,             setSpv]            = useState('All')
-  const [changeCat,       setChangeCat]      = useState<string>('')
+  const [changeCat,       setChangeCat]      = useState<string>('ADPCU')
   const [changeView,      setChangeView]     = useState<'chronological' | 'grid'>('chronological')
   const [showMap,         setShowMap]        = useState(false)
+  const [categoryMode,    setCategoryMode]   = useState<'raw' | 'grouped'>('grouped')
+
+  // Raw categories — always all 6, same as Stretch V1
+  const RAW_CATEGORIES = [
+    { display_category: 'Car / Jeep',  vehicle_types: ['CAR_JEEP'],              display_order: 1 },
+    { display_category: 'LCV',         vehicle_types: ['LCV'],                    display_order: 2 },
+    { display_category: 'Bus / Truck', vehicle_types: ['BUS_TRUCK'],             display_order: 3 },
+    { display_category: '3-Axle',      vehicle_types: ['3_AXLE'],                display_order: 4 },
+    { display_category: '4-6 Axle',    vehicle_types: ['4_6_AXLE'],             display_order: 5 },
+    { display_category: 'OSV',         vehicle_types: ['OSV'],                   display_order: 6 },
+  ]
 
   const { data: plazaMaster } = usePlazaMaster()
 
@@ -298,14 +309,20 @@ export default function StretchV2Page() {
   const allMonths = useMemo(() =>
     [...new Set(data.map(r => r.month_date))].sort(), [data])
 
-  const minCategories    = useMemo(() => getMinCategories(),    [mappings, selectedPlazas])
-  const minTemplateMap   = useMemo(() => getMinTemplateMapping(),[mappings, selectedPlazas])
+  const minCategories    = useMemo(() => getMinCategories(),     [mappings, selectedPlazas])
+  const minTemplateMap   = useMemo(() => getMinTemplateMapping(), [mappings, selectedPlazas])
+
+  // Active categories depend on mode
+  const activeCategories = useMemo(() =>
+    categoryMode === 'raw'
+      ? RAW_CATEGORIES.map(c => ({ display_category: c.display_category, display_order: c.display_order }))
+      : minCategories,
+    [categoryMode, minCategories]
+  )
 
   useEffect(() => {
-    if (!changeCat) {
-      setChangeCat('ADPCU')
-    }
-  }, [minCategories])
+    setChangeCat('ADPCU')
+  }, [categoryMode])
 
   // ── Build ADPCU chart (total across all vehicle types) ──
   const adpcuChart = useMemo(() => allMonths.map(m => {
@@ -319,12 +336,16 @@ export default function StretchV2Page() {
     return entry
   }), [data, allMonths, selectedPlazas])
 
-  // ── Build chart per display category ──
   function buildCategoryChart(displayCategory: string) {
     return allMonths.map(m => {
       const entry: Record<string, string | number | null> = { month: fmtMonth(m) }
       for (const plaza of selectedPlazas) {
-        const rawTypes = getRawTypesForCategory(plaza, displayCategory, minTemplateMap)
+        // Raw mode: use fixed vehicle types per category
+        // Grouped mode: use template mapping
+        const rawTypes = categoryMode === 'raw'
+          ? (RAW_CATEGORIES.find(c => c.display_category === displayCategory)?.vehicle_types ?? [])
+          : getRawTypesForCategory(plaza, displayCategory, minTemplateMap)
+
         if (!rawTypes.length) { entry[plaza] = null; continue }
         const rows = data.filter(r => r.plaza_name === plaza && r.month_date === m && rawTypes.includes(r.vehicle_type))
         if (!rows.length) { entry[plaza] = null; continue }
@@ -351,7 +372,7 @@ export default function StretchV2Page() {
             const days = rows[0]?.days_in_month ?? 30
             return days > 0 ? total / days : null
           }
-          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
+          const rawTypes = categoryMode === 'raw' ? (RAW_CATEGORIES.find(c => c.display_category === changeCat)?.vehicle_types ?? []) : getRawTypesForCategory(plaza, changeCat, minTemplateMap)
           const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
           if (!rows.length) return null
           const total = rows.reduce((s, r) => s + r.total_count, 0)
@@ -385,7 +406,7 @@ export default function StretchV2Page() {
             const days = rows[0]?.days_in_month ?? 30
             return days > 0 ? total / days : null
           }
-          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
+          const rawTypes = categoryMode === 'raw' ? (RAW_CATEGORIES.find(c => c.display_category === changeCat)?.vehicle_types ?? []) : getRawTypesForCategory(plaza, changeCat, minTemplateMap)
           const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
           if (!rows.length) return null
           const total = rows.reduce((s, r) => s + r.total_count, 0)
@@ -425,7 +446,7 @@ export default function StretchV2Page() {
             const days = rows[0]?.days_in_month ?? 30
             return days > 0 ? total / days : null
           }
-          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
+          const rawTypes = categoryMode === 'raw' ? (RAW_CATEGORIES.find(c => c.display_category === changeCat)?.vehicle_types ?? []) : getRawTypesForCategory(plaza, changeCat, minTemplateMap)
           const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
           if (!rows.length) return null
           const total = rows.reduce((s, r) => s + r.total_count, 0)
@@ -464,7 +485,7 @@ export default function StretchV2Page() {
             const days = rows[0]?.days_in_month ?? 30
             return days > 0 ? total / days : null
           }
-          const rawTypes = getRawTypesForCategory(plaza, changeCat, minTemplateMap)
+          const rawTypes = categoryMode === 'raw' ? (RAW_CATEGORIES.find(c => c.display_category === changeCat)?.vehicle_types ?? []) : getRawTypesForCategory(plaza, changeCat, minTemplateMap)
           const rows = data.filter(r => r.plaza_name === plaza && r.month_date === month && rawTypes.includes(r.vehicle_type))
           if (!rows.length) return null
           const total = rows.reduce((s, r) => s + r.total_count, 0)
@@ -483,8 +504,8 @@ export default function StretchV2Page() {
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
       <PageHeader
-        title="Stretch Analysis V2"
-        subtitle="Category-aware plaza comparison · Vehicle grouping per concession agreement"
+        title="Stretch Analysis"
+        subtitle="Compare plazas · Toggle between raw and grouped vehicle categories"
       />
 
       {/* Filters */}
@@ -577,25 +598,46 @@ export default function StretchV2Page() {
                 )
               })}
             </div>
-            {minCategories.length > 0 && (
+            {activeCategories.length > 0 && (
               <div style={{ fontSize: 11, color: '#8995a8', background: '#f8f9fb', border: '1px solid #e2e6ed', borderRadius: 4, padding: '5px 12px', display: 'inline-block' }}>
-                📊 Comparing on: <strong style={{ color: '#1a2540' }}>{minCategories.map(c => c.display_category).join(' · ')}</strong>
-                <span style={{ marginLeft: 8, color: '#b0bac8' }}>— based on most grouped template</span>
+                {categoryMode === 'raw'
+                  ? '⚡ Raw — all 6 vehicle types shown as-is'
+                  : `📊 Grouped — comparing on: `}
+                {categoryMode === 'grouped' && (
+                  <strong style={{ color: '#1a2540' }}>{activeCategories.map(c => c.display_category).join(' · ')}</strong>
+                )}
+                {categoryMode === 'grouped' && (
+                  <span style={{ marginLeft: 8, color: '#b0bac8' }}>— based on most grouped template</span>
+                )}
               </div>
             )}
           </div>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid #e2e6ed' }}>
-            {([['trends', 'Traffic Trends'], ['changes', 'MoM & YoY Changes']] as [string, string][]).map(([id, label]) => (
-              <button key={id} onClick={() => setActiveTab(id as 'trends' | 'changes')} style={{
-                padding: '9px 20px', fontSize: 12, fontWeight: activeTab === id ? 600 : 400,
-                color: activeTab === id ? '#1a2540' : '#8995a8',
-                background: 'transparent', border: 'none', cursor: 'pointer',
-                borderBottom: activeTab === id ? '2px solid #e07b10' : '2px solid transparent',
-                marginBottom: -2, fontFamily: 'DM Sans',
-              }}>{label}</button>
-            ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '2px solid #e2e6ed' }}>
+            <div style={{ display: 'flex', gap: 0 }}>
+              {([['trends', 'Traffic Trends'], ['changes', 'MoM & YoY Changes']] as [string, string][]).map(([id, label]) => (
+                <button key={id} onClick={() => setActiveTab(id as 'trends' | 'changes')} style={{
+                  padding: '9px 20px', fontSize: 12, fontWeight: activeTab === id ? 600 : 400,
+                  color: activeTab === id ? '#1a2540' : '#8995a8',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  borderBottom: activeTab === id ? '2px solid #e07b10' : '2px solid transparent',
+                  marginBottom: -2, fontFamily: 'DM Sans',
+                }}>{label}</button>
+              ))}
+            </div>
+            {/* Raw / Grouped toggle */}
+            <div style={{ display: 'flex', border: '1px solid #dde2ea', borderRadius: 4, overflow: 'hidden', marginBottom: 2 }}>
+              {([['raw', '⚡ Raw Categories'], ['grouped', '📊 Grouped']] as [string, string][]).map(([val, lbl]) => (
+                <button key={val} onClick={() => setCategoryMode(val as 'raw' | 'grouped')} style={{
+                  padding: '5px 14px', fontSize: 11, fontFamily: 'DM Sans',
+                  background: categoryMode === val ? '#1a2540' : '#fff',
+                  color: categoryMode === val ? '#fff' : '#8995a8',
+                  border: 'none', cursor: 'pointer',
+                  fontWeight: categoryMode === val ? 600 : 400,
+                }}>{lbl}</button>
+              ))}
+            </div>
           </div>
 
           {/* Tab 1 — Traffic Trends */}
@@ -605,7 +647,7 @@ export default function StretchV2Page() {
               <TrendChart title="Total ADPCU — Avg Daily PCU" chartData={adpcuChart} plazas={selectedPlazas} />
 
               {/* Per category — based on minimum (most grouped) template */}
-              {minCategories.map(cat => (
+              {activeCategories.map(cat => (
                 <TrendChart
                   key={cat.display_category}
                   title={`${cat.display_category} — Avg Daily Traffic`}
@@ -623,7 +665,7 @@ export default function StretchV2Page() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {/* ADPCU first, then vehicle categories */}
-                  {[{ display_category: 'ADPCU', display_order: 0 }, ...minCategories].map(cat => (
+                  {[{ display_category: 'ADPCU', display_order: 0 }, ...activeCategories].map(cat => (
                     <button key={cat.display_category}
                       onClick={() => setChangeCat(cat.display_category)}
                       style={{
