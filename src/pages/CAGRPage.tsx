@@ -10,14 +10,18 @@ import { PageHeader, NotationToggle, EmptyState } from '../components/UI'
 type PartialType = 'full' | 'start' | 'end' | 'mid' | 'both' | null
 
 interface PlazaRow {
-  plaza_name: string
-  piu: string
-  ro: string
+  plaza_name:          string
+  piu:                 string
+  ro:                  string
+  section_of_highway:  string
+  highway:             string
+  concessionaire_name: string
+  spv_name:            string
   fySeries: Record<string, { revenue: number; partial: PartialType; months: number }>
-  cagr: number | null
+  cagr:       number | null
   cagrPeriod: string
-  yoy: number | null
-  yoyLabel: string
+  yoy:        number | null
+  yoyLabel:   string
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -45,6 +49,10 @@ function buildPlazaRows(data: CAGRSummaryRow[]): { rows: PlazaRow[]; allFYs: str
     const latestRow  = sorted.at(-1)!
     const piu        = latestRow.piu ?? ''
     const ro         = latestRow.ro  ?? ''
+    const section    = latestRow.section_of_highway ?? ''
+    const highway    = latestRow.highway ?? ''
+    const conc       = sorted.find(r => r.concessionaire_name)?.concessionaire_name ?? ''
+    const spv        = sorted.find(r => r.spv_name)?.spv_name ?? ''
 
     // Build fySeries with partial detection using months_data
     const fySeries: PlazaRow['fySeries'] = {}
@@ -95,7 +103,7 @@ function buildPlazaRows(data: CAGRSummaryRow[]): { rows: PlazaRow[]; allFYs: str
       }
     }
 
-    rows.push({ plaza_name: plaza, piu, ro, fySeries, cagr, cagrPeriod, yoy, yoyLabel })
+    rows.push({ plaza_name: plaza, piu, ro, section_of_highway: section, highway, concessionaire_name: conc, spv_name: spv, fySeries, cagr, cagrPeriod, yoy, yoyLabel })
   }
 
   // Sort by latest full FY revenue descending
@@ -117,6 +125,77 @@ function partialColor(partial: PartialType): string | undefined {
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
+
+
+// ─── Plaza Tooltip ────────────────────────────────────────────────────────────
+
+function PlazaTooltip({ row, children }: { row: PlazaRow; children: React.ReactNode }) {
+  const [visible, setVisible] = React.useState(false)
+  const [pos,     setPos]     = React.useState({ x: 0, y: 0 })
+  const ref = React.useRef<HTMLDivElement>(null)
+
+  const hasInfo = row.concessionaire_name || row.spv_name || row.section_of_highway || row.piu || row.ro
+
+  if (!hasInfo) return <>{children}</>
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-block', width: '100%' }}
+      onMouseEnter={e => { setVisible(true); setPos({ x: e.clientX, y: e.clientY }) }}
+      onMouseMove={e => setPos({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setVisible(false)}
+    >
+      {children}
+      {visible && (
+        <div style={{
+          position: 'fixed',
+          left: pos.x + 12,
+          top: pos.y + 12,
+          zIndex: 9999,
+          background: '#1a2540',
+          color: '#fff',
+          borderRadius: 6,
+          padding: '10px 14px',
+          fontSize: 11,
+          fontFamily: 'DM Sans, sans-serif',
+          boxShadow: '0 4px 16px #00000040',
+          minWidth: 220,
+          maxWidth: 320,
+          pointerEvents: 'none',
+          lineHeight: 1.7,
+        }}>
+          {(row.concessionaire_name || row.spv_name) && (
+            <div style={{ marginBottom: 5 }}>
+              {row.concessionaire_name && (
+                <span><span style={{ color: '#a0b4c8' }}>Concessionaire: </span>{row.concessionaire_name}</span>
+              )}
+              {row.concessionaire_name && row.spv_name && <span style={{ color: '#4a6080' }}> · </span>}
+              {row.spv_name && (
+                <span><span style={{ color: '#a0b4c8' }}>Project: </span>{row.spv_name}</span>
+              )}
+            </div>
+          )}
+          {(row.highway || row.section_of_highway) && (
+            <div style={{ marginBottom: 5 }}>
+              {row.highway && (
+                <span><span style={{ color: '#a0b4c8' }}>Highway: </span>{row.highway}</span>
+              )}
+              {row.section_of_highway && (
+                <div><span style={{ color: '#a0b4c8' }}>Stretch: </span>{row.section_of_highway}</div>
+              )}
+            </div>
+          )}
+          {(row.piu || row.ro) && (
+            <div>
+              {row.piu && <span><span style={{ color: '#a0b4c8' }}>PIU: </span>{row.piu}</span>}
+              {row.piu && row.ro && <span style={{ color: '#4a6080' }}> · </span>}
+              {row.ro  && <span><span style={{ color: '#a0b4c8' }}>RO: </span>{row.ro}</span>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function CAGRPage() {
   const { data, loading, error } = useCAGR()
@@ -323,10 +402,10 @@ export default function CAGRPage() {
             <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr>
-                  {['Plaza', ...allFYs, 'CAGR', 'YoY%', 'CAGR Period', 'PIU', 'RO'].map(h => (
+                  {['Plaza', ...allFYs, 'CAGR', 'YoY%', 'CAGR Period'].map(h => (
                     <th key={h} style={{
                       padding: '9px 12px',
-                      textAlign: ['Plaza', 'CAGR Period', 'PIU', 'RO'].includes(h) ? 'left' : 'right',
+                      textAlign: ['Plaza', 'CAGR Period'].includes(h) ? 'left' : 'right',
                       background: '#f8f9fb',
                       color: '#a0aabc',
                       fontWeight: 600,
@@ -347,7 +426,16 @@ export default function CAGRPage() {
                     borderBottom: '1px solid #f0f2f5',
                   }}>
                     {/* Plaza */}
-                    <td style={{ ...td('left'), fontWeight: 600, color: '#1a2540', minWidth: 220 }}>{row.plaza_name}</td>
+                    <td style={{ ...td('left'), fontWeight: 600, color: '#1a2540', minWidth: 220 }}>
+                      <PlazaTooltip row={row}>
+                        <div style={{ cursor: 'help' }}>
+                          {row.plaza_name}
+                          {row.highway && (
+                            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 400, color: '#a0aabc' }}>{row.highway}</span>
+                          )}
+                        </div>
+                      </PlazaTooltip>
+                    </td>
 
                     {/* FY columns */}
                     {allFYs.map(fy => {
@@ -394,10 +482,6 @@ export default function CAGRPage() {
 
                     {/* CAGR Period */}
                     <td style={{ ...td('left'), color: '#8995a8', minWidth: 160 }}>{row.cagrPeriod}</td>
-
-                    {/* PIU and RO — moved to end */}
-                    <td style={{ ...td('left'), color: '#8995a8', minWidth: 100 }}>{row.piu || '—'}</td>
-                    <td style={{ ...td('left'), color: '#8995a8', minWidth: 100 }}>{row.ro  || '—'}</td>
                   </tr>
                 ))}
               </tbody>

@@ -17,14 +17,18 @@ export interface CAGRRow {
 }
 
 export interface CAGRSummaryRow {
-  plaza_name:   string
-  piu:          string
-  ro:           string
-  fy:           string
-  total_amount: number
-  total_pcu:    number
-  total_count:  number
-  months_data:  number
+  plaza_name:          string
+  piu:                 string
+  ro:                  string
+  fy:                  string
+  total_amount:        number
+  total_pcu:           number
+  total_count:         number
+  months_data:         number
+  section_of_highway:  string
+  highway:             string
+  concessionaire_name: string
+  spv_name:            string
 }
 
 export function useCAGR() {
