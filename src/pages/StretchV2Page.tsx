@@ -293,7 +293,6 @@ export default function StretchV2Page() {
   const [concessionaire,  setConcessionaire] = useState('All')
   const [spv,             setSpv]            = useState('All')
   const [changeCat,       setChangeCat]      = useState<string>('ADPCU')
-  const [changeView,      setChangeView]     = useState<'chronological' | 'grid'>('chronological')
   const [showMap,         setShowMap]        = useState(false)
   const [categoryMode,    setCategoryMode]   = useState<'raw' | 'grouped'>('grouped')
 
@@ -696,31 +695,11 @@ export default function StretchV2Page() {
                       }}>{cat.display_category}</button>
                   ))}
                 </div>
-                <div style={{ display: 'flex', border: '1px solid #dde2ea', borderRadius: 4, overflow: 'hidden' }}>
-                  {(['chronological', 'FY × Month Grid'] as const).map((val, i) => (
-                    <button key={val} onClick={() => setChangeView(i === 0 ? 'chronological' : 'grid')} style={{
-                      padding: '5px 14px',
-                      background: (i === 0 ? changeView === 'chronological' : changeView === 'grid') ? '#1a2540' : '#fff',
-                      color: (i === 0 ? changeView === 'chronological' : changeView === 'grid') ? '#fff' : '#8995a8',
-                      border: 'none', cursor: 'pointer', fontFamily: 'DM Sans', fontSize: 11,
-                      fontWeight: (i === 0 ? changeView === 'chronological' : changeView === 'grid') ? 600 : 400,
-                    }}>{val}</button>
-                  ))}
-                </div>
+
               </div>
 
-              {changeView === 'chronological' && (
-                <>
-                  <ChangeTable title="Month-on-Month % Change" rows={momRows} plazas={selectedPlazas} />
-                  <ChangeTable title="Year-on-Year % Change (same month prior year)" rows={yoyRows} plazas={selectedPlazas} />
-                </>
-              )}
-              {changeView === 'grid' && (
-                <>
-                  <GridTable title="Month-on-Month % Change" plazaFYData={momGridData} plazas={selectedPlazas} />
-                  <GridTable title="Year-on-Year % Change (same month prior year)" plazaFYData={yoyGridData} plazas={selectedPlazas} />
-                </>
-              )}
+              <GridTable title="Month-on-Month % Change" plazaFYData={momGridData} plazas={selectedPlazas} />
+              <GridTable title="Year-on-Year % Change (same month prior year)" plazaFYData={yoyGridData} plazas={selectedPlazas} />
             </>
           )}
         </>
