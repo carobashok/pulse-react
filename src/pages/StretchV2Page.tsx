@@ -194,13 +194,13 @@ const MONTH_ORDER_IDX: Record<number, number> = {
 
 function GridTable({ title, plazaFYData, plazas }: {
   title: string
-  // plazaFYData[plaza][fy][monthAbbr] = pct | null
-  plazaFYData: Record<string, Record<string, Record<string, number | null>>>
+  // plazaFYData[plaza][fy][monthAbbr] = { pct, val } | null
+  plazaFYData: Record<string, Record<string, Record<string, { pct: number | null; val: number | null }>>>
   plazas: string[]
 }) {
   const allFYs = [...new Set(
     plazas.flatMap(p => Object.keys(plazaFYData[p] ?? {}))
-  )].sort()
+  )].sort().reverse()
 
   return (
     <div style={{ marginBottom: 24, background: '#fff', border: '1px solid #e2e6ed', borderRadius: 6, overflow: 'hidden' }}>
@@ -238,15 +238,28 @@ function GridTable({ title, plazaFYData, plazas }: {
                   </td>
                   {/* Month cells */}
                   {MONTH_COLS.map(m => {
-                    const v = fyMap[fy]?.[m] ?? null
+                    const cell = fyMap[fy]?.[m] ?? null
+                    const pct  = cell?.pct ?? null
+                    const val  = cell?.val ?? null
                     return (
-                      <td key={m} style={{
-                        padding: '6px 8px', textAlign: 'right',
-                        fontFamily: 'DM Mono', fontSize: 11,
-                        color: v === null ? '#d0d5dd' : v >= 0 ? '#16a085' : '#c94f4f',
-                        fontWeight: v !== null ? 600 : 400,
-                      }}>
-                        {v === null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`}
+                      <td key={m} style={{ padding: '4px 8px', textAlign: 'right', verticalAlign: 'middle' }}>
+                        {pct === null && val === null
+                          ? <span style={{ color: '#d0d5dd', fontFamily: 'DM Mono' }}>—</span>
+                          : <>
+                              <div style={{
+                                fontFamily: 'DM Mono', fontSize: 11,
+                                color: pct === null ? '#b0bac8' : pct >= 0 ? '#16a085' : '#c94f4f',
+                                fontWeight: pct !== null ? 600 : 400,
+                              }}>
+                                {pct === null ? '—' : `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`}
+                              </div>
+                              {val !== null && (
+                                <div style={{ fontFamily: 'DM Mono', fontSize: 10, color: '#a0aabc', marginTop: 1 }}>
+                                  {Math.round(val).toLocaleString('en-IN')}
+                                </div>
+                              )}
+                            </>
+                        }
                       </td>
                     )
                   })}
@@ -423,7 +436,7 @@ export default function StretchV2Page() {
   // ── Grid data — Plaza × FY × Month ──
   const momGridData = useMemo(() => {
     if (!changeCat) return {}
-    const result: Record<string, Record<string, Record<string, number | null>>> = {}
+    const result: Record<string, Record<string, Record<string, { pct: number | null; val: number | null }>>> = {}
     for (const plaza of selectedPlazas) {
       result[plaza] = {}
       const plazaMonths = allMonths.filter(m =>
@@ -454,7 +467,10 @@ export default function StretchV2Page() {
           return days > 0 ? total / days : null
         }
         const curr = getVal(m); const prev = getVal(prevM)
-        result[plaza][fy][mAbbr] = curr !== null && prev !== null && prev > 0 ? +((curr/prev - 1)*100).toFixed(1) : null
+        result[plaza][fy][mAbbr] = {
+          pct: curr !== null && prev !== null && prev > 0 ? +((curr/prev - 1)*100).toFixed(1) : null,
+          val: curr,
+        }
       }
     }
     return result
@@ -462,7 +478,7 @@ export default function StretchV2Page() {
 
   const yoyGridData = useMemo(() => {
     if (!changeCat) return {}
-    const result: Record<string, Record<string, Record<string, number | null>>> = {}
+    const result: Record<string, Record<string, Record<string, { pct: number | null; val: number | null }>>> = {}
     for (const plaza of selectedPlazas) {
       result[plaza] = {}
       const plazaMonths = allMonths.filter(m =>
@@ -493,7 +509,10 @@ export default function StretchV2Page() {
           return days > 0 ? total / days : null
         }
         const curr = getVal(m); const prior = getVal(priorM)
-        result[plaza][fy][mAbbr] = curr !== null && prior !== null && prior > 0 ? +((curr/prior - 1)*100).toFixed(1) : null
+        result[plaza][fy][mAbbr] = {
+          pct: curr !== null && prior !== null && prior > 0 ? +((curr/prior - 1)*100).toFixed(1) : null,
+          val: curr,
+        }
       }
     }
     return result
