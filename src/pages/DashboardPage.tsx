@@ -297,8 +297,11 @@ export default function DashboardPage() {
         <FilterSelect
           label="Plaza" value={plaza} onChange={setPlaza} width={220}
           options={[
-            { value: 'All', label: 'All Plazas' },
-            ...filteredPlazas.map(p => ({ value: p, label: p }))
+            { value: 'All', label: compareMode === 'common' ? `All Common (${commonPlazas.size})` : 'All Plazas' },
+            ...(compareMode === 'common'
+              ? filteredPlazas.filter(p => commonPlazas.has(p)).map(p => ({ value: p, label: p }))
+              : filteredPlazas.map(p => ({ value: p, label: p }))
+            )
           ]}
         />
         <FilterSelect
@@ -310,7 +313,7 @@ export default function DashboardPage() {
           <label style={filterLblStyle}>Comparison</label>
           <div style={{ display: 'flex', border: '1px solid #dde2ea', borderRadius: 4, overflow: 'hidden' }}>
             {([['all', 'All Plazas'], ['common', 'Common Plazas']] as [string, string][]).map(([val, lbl]) => (
-              <button key={val} onClick={() => setCompareMode(val as 'all' | 'common')} style={{
+              <button key={val} onClick={() => { setCompareMode(val as 'all' | 'common'); setPlaza('All') }} style={{
                 padding: '5px 12px', fontSize: 11, fontFamily: 'DM Sans',
                 background: compareMode === val ? '#1a2540' : '#fff',
                 color: compareMode === val ? '#fff' : '#8995a8',
