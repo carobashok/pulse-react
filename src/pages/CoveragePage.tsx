@@ -63,6 +63,7 @@ export default function CoveragePage() {
   const [concessionaire,setConcessionaire] = useState('All')
   const [spv,           setSpv]           = useState('All')
   const [filterFY,      setFilterFY]      = useState('All')
+  const [statFilter,    setStatFilter]    = useState<'all'|'full'|'partial'|'missing'>('all')
 
   const spvOptions     = getSpvs(concessionaire)
   const concPlazaNames = useMemo(() => {
@@ -96,23 +97,94 @@ export default function CoveragePage() {
       list = list.filter(p => concPlazaNames.has(p.toLowerCase().trim()))
     }
     if (filterFY !== 'All') {
-      // Only show plazas that have data in this FY
       list = list.filter(p => matrix[p]?.[filterFY] != null)
     }
+    if (statFilter === 'full') {
+      list = list.filter(p => {
+        const hasFYs = allFYs.filter(fy => matrix[p]?.[fy] != null)
+        if (!hasFYs.length) return false
+        const firstFY = hasFYs[0]; const lastFY = hasFYs.at(-1)!
+        const range = allFYs.slice(allFYs.indexOf(firstFY), allFYs.indexOf(lastFY) + 1)
+        if (range.some(fy => matrix[p]?.[fy] == null)) return false
+        const pastOk = range.filter(fy => fy !== CURR_FY).every(fy => (matrix[p]?.[fy] ?? 0) === 12)
+        const currM  = matrix[p]?.[CURR_FY] ?? null
+        const currOk = currM === null || currM >= ELAPSED - 1
+        return pastOk && currOk
+      })
+    } else if (statFilter === 'partial') {
+      list = list.filter(p => {
+        const hasFYs  = allFYs.filter(fy => matrix[p]?.[fy] != null)
+        if (!hasFYs.length) return false
+        const firstFY = hasFYs[0]; const lastFY = hasFYs.at(-1)!
+        const fyRange = allFYs.slice(allFYs.indexOf(firstFY), allFYs.indexOf(lastFY) + 1)
+        if (fyRange.some(fy => matrix[p]?.[fy] == null)) return false // gap, not partial
+        const pastPartial = fyRange.filter(fy => fy !== CURR_FY).some(fy => (matrix[p]?.[fy] ?? 0) < 12)
+        const currM = matrix[p]?.[CURR_FY] ?? null
+        const currPartial = currM !== null && currM < ELAPSED - 1
+        return pastPartial || currPartial
+      })
+    } else if (statFilter === 'missing') {
+      // Gap: one or more entire FYs missing between first and last active FY
+      list = list.filter(p => {
+        const hasFYs = allFYs.filter(fy => matrix[p]?.[fy] != null)
+        if (!hasFYs.length) return true
+        const firstFY = hasFYs[0]; const lastFY = hasFYs.at(-1)!
+        const fyRange = allFYs.slice(allFYs.indexOf(firstFY), allFYs.indexOf(lastFY) + 1)
+        return fyRange.some(fy => matrix[p]?.[fy] == null)
+      })
+    }
+    return list
+  }, [plazaList, search, concPlazaNames, filterFY, statFilter, matrix, allFYs])
+
+  // Stats — based on filtered list WITHOUT statFilter applied
+  const basePlazas = useMemo(() => {
+    let list = plazaList
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(p => p.toLowerCase().includes(q))
+    }
+    if (concPlazaNames) list = list.filter(p => concPlazaNames.has(p.toLowerCase().trim()))
+    if (filterFY !== 'All') list = list.filter(p => matrix[p]?.[filterFY] != null)
     return list
   }, [plazaList, search, concPlazaNames, filterFY, matrix])
 
-  // Stats
   const stats = useMemo(() => {
-    const total    = displayPlazas.length
-    const full     = displayPlazas.filter(p => allFYs.every(fy => (matrix[p]?.[fy] ?? 0) === 12)).length
-    const partial  = displayPlazas.filter(p => allFYs.some(fy => {
-      const m = matrix[p]?.[fy]
-      return m != null && m < 12
-    })).length
-    const missing  = displayPlazas.filter(p => allFYs.some(fy => matrix[p]?.[fy] == null)).length
-    return { total, full, partial, missing }
-  }, [displayPlazas, allFYs, matrix])
+    // Helper — get FY range a plaza is active in
+    function getRange(p: string) {
+      const hasFYs = allFYs.filter(fy => matrix[p]?.[fy] != null)
+      if (!hasFYs.length) return []
+      const firstFY = hasFYs[0]; const lastFY = hasFYs.at(-1)!
+      return allFYs.slice(allFYs.indexOf(firstFY), allFYs.indexOf(lastFY) + 1)
+    }
+
+    const full = basePlazas.filter(p => {
+      const range = getRange(p)
+      if (!range.length) return false
+      if (range.some(fy => matrix[p]?.[fy] == null)) return false // has gap
+      const pastOk = range.filter(fy => fy !== CURR_FY).every(fy => (matrix[p]?.[fy] ?? 0) === 12)
+      const currM  = matrix[p]?.[CURR_FY] ?? null
+      const currOk = currM === null || currM >= ELAPSED - 1
+      return pastOk && currOk
+    }).length
+
+    const gap = basePlazas.filter(p => {
+      const range = getRange(p)
+      if (!range.length) return true
+      return range.some(fy => matrix[p]?.[fy] == null)
+    }).length
+
+    const partial = basePlazas.filter(p => {
+      const range = getRange(p)
+      if (!range.length) return false
+      if (range.some(fy => matrix[p]?.[fy] == null)) return false // gap not partial
+      const pastPartial = range.filter(fy => fy !== CURR_FY).some(fy => (matrix[p]?.[fy] ?? 0) < 12)
+      const currM = matrix[p]?.[CURR_FY] ?? null
+      const currPartial = currM !== null && currM < ELAPSED - 1
+      return pastPartial || currPartial
+    }).length
+
+    return { full, partial, gap }
+  }, [basePlazas, allFYs, matrix])
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
@@ -183,14 +255,21 @@ export default function CoveragePage() {
       {/* Stats row */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         {[
-          { label: 'Total Plazas',    value: stats.total,   color: '#1a2540' },
-          { label: 'Complete Data',   value: stats.full,    color: '#16a085' },
-          { label: 'Partial Data',    value: stats.partial, color: '#e07b10' },
-          { label: 'Some FY Missing', value: stats.missing, color: '#c94f4f' },
+          { label: 'Total Plazas',  value: basePlazas.length, color: '#1a2540', key: 'all'     },
+          { label: 'Complete',        value: stats.full,         color: '#16a085', key: 'full'    },
+          { label: 'Partial Months',  value: stats.partial,      color: '#e07b10', key: 'partial' },
+          { label: 'FY Gap',          value: stats.gap,          color: '#c94f4f', key: 'missing' },
         ].map(s => (
-          <div key={s.label} style={{ background: '#fff', border: `1px solid ${s.color}20`, borderRadius: 6, padding: '8px 16px', minWidth: 120 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#a0aabc', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono', color: s.color }}>{s.value}</div>
+          <div key={s.key}
+            onClick={() => setStatFilter(f => f === s.key ? 'all' : s.key as typeof statFilter)}
+            style={{
+              background: statFilter === s.key ? s.color : '#fff',
+              border: `1px solid ${s.color}40`, borderRadius: 6,
+              padding: '8px 16px', minWidth: 120, cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: statFilter === s.key ? '#fff' : '#a0aabc', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{s.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono', color: statFilter === s.key ? '#fff' : s.color }}>{s.value}</div>
           </div>
         ))}
       </div>
