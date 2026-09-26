@@ -120,15 +120,12 @@ function TrendChart({ title, chartData, plazas }: {
   chartData: Record<string, string | number | null>[]
   plazas: string[]
 }) {
-  const tickInterval = chartData.length > 36 ? Math.floor(chartData.length / 12) : 
-                       chartData.length > 24 ? 2 : 1
   return (
     <SectionCard title={title}>
       <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="2 4" stroke="#e8edf2" vertical={false} />
-          <XAxis dataKey="month" tick={{ fill: '#8995a8', fontSize: 10, fontFamily: 'DM Sans' }} 
-            axisLine={false} tickLine={false} interval={tickInterval} />
+          <XAxis dataKey="month" tick={{ fill: '#8995a8', fontSize: 10, fontFamily: 'DM Sans' }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fill: '#8995a8', fontSize: 10, fontFamily: 'DM Mono' }} axisLine={false} tickLine={false} tickFormatter={v => fmtNum(+v)} width={55} />
           <Tooltip content={<ChartTooltip />} cursor={{ stroke: '#dde2ea' }} />
           <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'DM Sans' }} />
