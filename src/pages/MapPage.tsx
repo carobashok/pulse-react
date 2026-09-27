@@ -69,6 +69,8 @@ export default function MapPage() {
   const [highway,        setHighway]        = useState('All')
   const [state,          setState]          = useState('All')
   const [search,         setSearch]         = useState('')
+  const [selectedNames,  setSelectedNames]  = useState<string[]>([])
+  const [searchOpen,     setSearchOpen]     = useState(false)
   const [selectedPlaza,  setSelectedPlaza]  = useState<PlazaMaster | null>(null)
 
   // NH route state
@@ -88,16 +90,37 @@ export default function MapPage() {
 
   const displayPlazas = useMemo(() => {
     let list = plazas
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      list = list.filter(p => p.plaza_name.toLowerCase().includes(q) || p.highway?.toLowerCase().includes(q))
+    if (selectedNames.length > 0) {
+      const wanted = new Set(selectedNames.map(n => n.toLowerCase().trim()))
+      list = list.filter(p => wanted.has(p.plaza_name.toLowerCase().trim()))
     }
     if (highway !== 'All') list = list.filter(p => p.highway === highway)
     if (state !== 'All')   list = list.filter(p => p.state === state)
     if (concPlazaNames)    list = list.filter(p => concPlazaNames.has(p.plaza_name.toLowerCase().trim()))
     // If NH route active, highlight only plazas on that NH
     return list
-  }, [plazas, search, highway, state, concPlazaNames])
+  }, [plazas, selectedNames, highway, state, concPlazaNames])
+
+  // Suggestions for the plaza picker — matches on plaza name or highway, excludes already-selected
+  const searchSuggestions = useMemo(() => {
+    if (!search.trim()) return []
+    const q = search.toLowerCase()
+    const selectedSet = new Set(selectedNames.map(n => n.toLowerCase().trim()))
+    return plazas
+      .filter(p => !selectedSet.has(p.plaza_name.toLowerCase().trim()))
+      .filter(p => p.plaza_name.toLowerCase().includes(q) || p.highway?.toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [plazas, search, selectedNames])
+
+  function addPlaza(name: string) {
+    setSelectedNames(prev => prev.includes(name) ? prev : [...prev, name])
+    setSearch('')
+    setSearchOpen(false)
+  }
+
+  function removePlaza(name: string) {
+    setSelectedNames(prev => prev.filter(n => n !== name))
+  }
 
   // Plazas on the queried NH
   const nhPlazas = useMemo(() => {
@@ -160,9 +183,56 @@ export default function MapPage() {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10, padding: '12px 16px', background: '#fff', border: '1px solid #e2e6ed', borderRadius: 6, alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '2 1 160px' }}>
-          <label style={lblS}>Search Plaza / Highway</label>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Type to filter…" style={inpS} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '2 1 220px', position: 'relative' }}>
+          <label style={lblS}>Select Plazas {selectedNames.length > 0 && `(${selectedNames.length})`}</label>
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center',
+            background: '#f4f6f9', border: '1px solid #dde2ea', borderRadius: 4,
+            padding: '4px 6px', minHeight: 30,
+          }}>
+            {selectedNames.map(name => (
+              <span key={name} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                background: '#e07b1018', color: '#e07b10', fontWeight: 600,
+                fontSize: 11, padding: '2px 6px 2px 8px', borderRadius: 12,
+                whiteSpace: 'nowrap',
+              }}>
+                {name}
+                <span onClick={() => removePlaza(name)} style={{ cursor: 'pointer', color: '#e07b10', fontWeight: 700, lineHeight: 1 }}>×</span>
+              </span>
+            ))}
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setSearchOpen(true) }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && searchSuggestions.length > 0) addPlaza(searchSuggestions[0].plaza_name)
+                if (e.key === 'Backspace' && !search && selectedNames.length > 0) removePlaza(selectedNames[selectedNames.length - 1])
+              }}
+              placeholder={selectedNames.length === 0 ? 'Type to add plazas…' : 'Add more…'}
+              style={{ flex: 1, minWidth: 100, border: 'none', background: 'transparent', outline: 'none', fontSize: 12, fontFamily: 'DM Sans', color: '#1a2540', padding: '2px 4px' }}
+            />
+          </div>
+          {searchOpen && searchSuggestions.length > 0 && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 2, zIndex: 20,
+              background: '#fff', border: '1px solid #dde2ea', borderRadius: 4,
+              boxShadow: '0 4px 12px #00000015', maxHeight: 220, overflowY: 'auto',
+            }}>
+              {searchSuggestions.map(p => (
+                <div key={p.id}
+                  onMouseDown={() => addPlaza(p.plaza_name)}
+                  style={{ padding: '7px 12px', cursor: 'pointer', fontSize: 12, color: '#1a2540', borderBottom: '1px solid #f0f2f5' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8f9fb'}
+                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                >
+                  <span style={{ fontWeight: 500 }}>{p.plaza_name}</span>
+                  <span style={{ color: '#8995a8', marginLeft: 8, fontSize: 11 }}>{p.highway}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
           <label style={lblS}>Highway</label>
@@ -199,7 +269,7 @@ export default function MapPage() {
             <option value="concessionaire">Concessionaire</option>
           </select>
         </div>
-        <button onClick={() => { setSearch(''); setHighway('All'); setState('All'); setConcessionaire('All'); setSpv('All'); setFilterBy('none') }}
+        <button onClick={() => { setSearch(''); setSelectedNames([]); setHighway('All'); setState('All'); setConcessionaire('All'); setSpv('All'); setFilterBy('none') }}
           style={{ padding: '6px 12px', background: '#fff', border: '1px solid #dde2ea', borderRadius: 4, color: '#8995a8', cursor: 'pointer', fontSize: 11, fontFamily: 'DM Sans', alignSelf: 'flex-end' }}>
           Reset
         </button>

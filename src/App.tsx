@@ -1,14 +1,15 @@
 import React, { useState } from 'react'
-import DashboardPage   from './pages/DashboardPage'
-import CAGRPage        from './pages/CAGRPage'
-import SCFPage         from './pages/SCFPage'
-import StretchPage     from './pages/StretchV2Page'
-import AdminPage       from './pages/AdminPage'
-import MapPage         from './pages/MapPage'
-import CoveragePage    from './pages/CoveragePage'
-import PlazaNamesPage  from './pages/PlazaNamesPage'
+import DashboardPage    from './pages/DashboardPage'
+import CAGRPage         from './pages/CAGRPage'
+import SCFPage          from './pages/SCFPage'
+import StretchPage      from './pages/StretchV2Page'
+import AdminPage        from './pages/AdminPage'
+import MapPage          from './pages/MapPage'
+import CoveragePage     from './pages/CoveragePage'
+import PlazaNamesPage   from './pages/PlazaNamesPage'
+import PlazaDetailsPage from './pages/PlazaDetailsPage'
 
-type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'map' | 'coverage' | 'admin' | 'plazanames'
+type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'map' | 'coverage' | 'admin' | 'plazanames' | 'plazadetails'
 
 const NAV = [
   { id: 'dashboard' as Page, label: 'Dashboard',        sub: 'Network overview'    },
@@ -20,8 +21,9 @@ const NAV = [
 ]
 
 const ADMIN_SUB = [
-  { id: 'admin'      as Page, label: 'Vehicle Templates', sub: 'Category grouping'  },
-  { id: 'plazanames' as Page, label: 'Plaza Names',       sub: 'Canonical mapping'  },
+  { id: 'admin'        as Page, label: 'Vehicle Templates', sub: 'Category grouping'        },
+  { id: 'plazanames'   as Page, label: 'Plaza Names',       sub: 'Canonical mapping'        },
+  { id: 'plazadetails' as Page, label: 'Plaza Details',     sub: 'Lat/long, highway, state' },
 ]
 
 export default function App() {
@@ -35,11 +37,11 @@ export default function App() {
 
   const ADMIN_PIN = '1900'
 
-  const isAdminPage = page === 'admin' || page === 'plazanames'
+  const isAdminPage = page === 'admin' || page === 'plazanames' || page === 'plazadetails'
 
   function navTo(id: Page) {
     setPage(id)
-    if (id === 'admin' || id === 'plazanames') setAdminExpanded(true)
+    if (id === 'admin' || id === 'plazanames' || id === 'plazadetails') setAdminExpanded(true)
   }
 
   function handleAdminClick() {
@@ -193,14 +195,15 @@ export default function App() {
       </aside>
 
       <main style={{ flex: 1, overflowY: 'auto', background: '#f4f6f9' }}>
-        {page === 'dashboard'  && <DashboardPage />}
-        {page === 'cagr'       && <CAGRPage />}
-        {page === 'scf'        && <SCFPage  />}
-        {page === 'stretch'    && <StretchPage />}
-        {page === 'map'        && <MapPage />}
-        {page === 'coverage'   && <CoveragePage />}
-        {page === 'admin'      && <AdminPage />}
-        {page === 'plazanames' && <PlazaNamesPage />}
+        {page === 'dashboard'    && <DashboardPage />}
+        {page === 'cagr'         && <CAGRPage />}
+        {page === 'scf'          && <SCFPage  />}
+        {page === 'stretch'      && <StretchPage />}
+        {page === 'map'          && <MapPage />}
+        {page === 'coverage'     && <CoveragePage />}
+        {page === 'admin'        && <AdminPage />}
+        {page === 'plazanames'   && <PlazaNamesPage />}
+        {page === 'plazadetails' && <PlazaDetailsPage />}
       </main>
 
       {/* PIN Modal */}
