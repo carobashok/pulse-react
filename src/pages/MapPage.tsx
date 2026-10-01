@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, GeoJSON, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMap } from 'react-leaflet'
 import { usePlazaMaster } from '../hooks/usePlazaMaster'
 import { useConcessionaires } from '../hooks/useConcessionaires'
 import { PageHeader, EmptyState } from '../components/UI'
@@ -78,18 +78,6 @@ export default function MapPage() {
   const [nhQueried,      setNhQueried]      = useState('')
   const [routePoints,    setRoutePoints]    = useState<[number,number][]>([])
   const [routeError,     setRouteError]     = useState('')
-
-  // State boundaries (GeoJSON)
-  const [stateBoundaries, setStateBoundaries] = useState<any>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    fetch('https://cdn.jsdelivr.net/gh/udit-001/india-maps-data@2884453/geojson/india.geojson')
-      .then(res => res.json())
-      .then(geojson => { if (!cancelled) setStateBoundaries(geojson) })
-      .catch(() => { /* boundaries are decorative — fail silently if the CDN is unreachable */ })
-    return () => { cancelled = true }
-  }, [])
 
   const highways   = useMemo(() => ['All', ...new Set(plazas.map(p => p.highway).filter(Boolean))].sort(), [plazas])
   const states     = useMemo(() => ['All', ...new Set(plazas.map(p => p.state).filter(Boolean))].sort(), [plazas])
@@ -331,15 +319,6 @@ export default function MapPage() {
               attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             />
             <FitBounds plazas={displayPlazas} routePoints={routePoints} />
-
-            {/* State boundaries */}
-            {stateBoundaries && (
-              <GeoJSON
-                data={stateBoundaries}
-                style={{ color: '#8995a8', weight: 1, opacity: 0.6, fillOpacity: 0 }}
-                interactive={false}
-              />
-            )}
 
             {/* NH Route polyline */}
             {routePoints.length > 0 && (
