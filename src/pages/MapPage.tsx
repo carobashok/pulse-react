@@ -79,13 +79,62 @@ export default function MapPage() {
   const [routePoints,    setRoutePoints]    = useState<[number,number][]>([])
   const [routeError,     setRouteError]     = useState('')
 
-  const highways   = useMemo(() => ['All', ...new Set(plazas.map(p => p.highway).filter(Boolean))].sort(), [plazas])
-  const states     = useMemo(() => ['All', ...new Set(plazas.map(p => p.state).filter(Boolean))].sort(), [plazas])
-  const spvOptions = getSpvs(concessionaire)
+  const norm = (s: string) => s.toLowerCase().trim()
+
+  // Plaza set implied by State + Highway
+  function plazasForStateHighway(st: string, hw: string): Set<string> | null {
+    if (st === 'All' && hw === 'All') return null
+    return new Set(
+      plazas
+        .filter(p => (st === 'All' || p.state === st) && (hw === 'All' || p.highway === hw))
+        .map(p => norm(p.plaza_name))
+    )
+  }
+
+  // Plaza set implied by Concessionaire + SPV
+  function plazasForConcSpv(conc: string, sp: string): Set<string> | null {
+    if (conc === 'All' && sp === 'All') return null
+    return new Set(getPlazas(conc, sp).map(norm))
+  }
+
+  // State options: derived from plazas implied by Highway + Concessionaire
+  const states = useMemo(() => {
+    const hwSet = plazasForStateHighway('All', highway)
+    const csSet = plazasForConcSpv(concessionaire, 'All')
+    let pool = plazas
+    if (hwSet) pool = pool.filter(p => hwSet.has(norm(p.plaza_name)))
+    if (csSet) pool = pool.filter(p => csSet.has(norm(p.plaza_name)))
+    return ['All', ...[...new Set(pool.map(p => p.state).filter(Boolean))].sort()]
+  }, [plazas, highway, concessionaire])
+
+  // Highway options: derived from plazas implied by State + Concessionaire
+  const highways = useMemo(() => {
+    const stSet = plazasForStateHighway(state, 'All')
+    const csSet = plazasForConcSpv(concessionaire, 'All')
+    let pool = plazas
+    if (stSet) pool = pool.filter(p => stSet.has(norm(p.plaza_name)))
+    if (csSet) pool = pool.filter(p => csSet.has(norm(p.plaza_name)))
+    return ['All', ...[...new Set(pool.map(p => p.highway).filter(Boolean))].sort()]
+  }, [plazas, state, concessionaire])
+
+  // Concessionaire options: derived from plazas implied by State + Highway
+  const concessionaireOptions = useMemo(() => {
+    const geoSet = plazasForStateHighway(state, highway)
+    if (!geoSet) return concessionaires
+    return concessionaires.filter(c => getPlazas(c, 'All').some(p => geoSet.has(norm(p))))
+  }, [concessionaires, state, highway])
+
+  // SPV options: derived from plazas implied by State + Highway, under the chosen Concessionaire
+  const spvOptions = useMemo(() => {
+    const geoSet = plazasForStateHighway(state, highway)
+    let opts = getSpvs(concessionaire)
+    if (geoSet) opts = opts.filter(s => getPlazas(concessionaire, s).some(p => geoSet.has(norm(p))))
+    return opts
+  }, [state, highway, concessionaire])
 
   const concPlazaNames = useMemo(() => {
     if (concessionaire === 'All' && spv === 'All') return null
-    return new Set(getPlazas(concessionaire, spv).map(p => p.toLowerCase().trim()))
+    return new Set(getPlazas(concessionaire, spv).map(norm))
   }, [concessionaire, spv])
 
   const displayPlazas = useMemo(() => {
@@ -235,22 +284,22 @@ export default function MapPage() {
           )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
-          <label style={lblS}>Highway</label>
-          <select value={highway} onChange={e => { setHighway(e.target.value); if (e.target.value !== 'All') setFilterBy('highway') }} style={selS}>
-            {highways.map(h => <option key={h} value={h}>{h}</option>)}
-          </select>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
           <label style={lblS}>State</label>
           <select value={state} onChange={e => { setState(e.target.value); if (e.target.value !== 'All') setFilterBy('state') }} style={selS}>
             {states.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
+          <label style={lblS}>Highway</label>
+          <select value={highway} onChange={e => { setHighway(e.target.value); if (e.target.value !== 'All') setFilterBy('highway') }} style={selS}>
+            {highways.map(h => <option key={h} value={h}>{h}</option>)}
           </select>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 160 }}>
           <label style={lblS}>Concessionaire</label>
           <select value={concessionaire} onChange={e => { setConcessionaire(e.target.value); setSpv('All'); setFilterBy('concessionaire') }} style={selS}>
             <option value="All">All Concessionaires</option>
-            {concessionaires.map(c => <option key={c} value={c}>{c}</option>)}
+            {concessionaireOptions.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 140 }}>
@@ -260,6 +309,14 @@ export default function MapPage() {
             {spvOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {(state !== 'All' || highway !== 'All' || concessionaire !== 'All' || spv !== 'All') && (
+          <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 7 }}>
+            <span onClick={() => { setState('All'); setHighway('All'); setConcessionaire('All'); setSpv('All'); setFilterBy('none') }}
+              style={{ fontSize: 11, color: '#c94f4f', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              × Reset filters
+            </span>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 120 }}>
           <label style={lblS}>Color By</label>
           <select value={filterBy} onChange={e => setFilterBy(e.target.value as typeof filterBy)} style={selS}>
