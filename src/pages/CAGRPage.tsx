@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { useCAGR, type CAGRSummaryRow } from '../hooks/useCAGR'
 import { usePlazaList } from '../hooks/usePlazaList'
+import { usePlazaMaster } from '../hooks/usePlazaMaster'
 import { useConcessionaires } from '../hooks/useConcessionaires'
 import { fmtNum, type Notation } from '../lib/formatters'
 import { PageHeader, NotationToggle, EmptyState } from '../components/UI'
@@ -200,12 +201,15 @@ function PlazaTooltip({ row, children }: { row: PlazaRow; children: React.ReactN
 export default function CAGRPage() {
   const { data, loading, error } = useCAGR()
   const { plazas: allPlazas }    = usePlazaList()
+  const { data: plazaMaster }    = usePlazaMaster()
   const { concessionaires, getSpvs, getPlazas } = useConcessionaires()
 
   const [notation,        setNotation]        = useState<Notation>('Indian')
   const [search,          setSearch]          = useState('')
   const [concessionaire,  setConcessionaire]  = useState('All')
   const [spv,             setSpv]             = useState('All')
+  const [highway,         setHighway]         = useState('All')
+  const [state,           setState]           = useState('All')
   const [selectedPlazas,  setSelectedPlazas]  = useState<string[]>([])
   const [plazaSearch,     setPlazaSearch]     = useState('')
   const [plazaDropOpen,   setPlazaDropOpen]   = useState(false)
@@ -220,31 +224,106 @@ export default function CAGRPage() {
     return () => document.removeEventListener('mousedown', handle)
   }, [])
 
-  // Cascading
-  const spvOptions     = getSpvs(concessionaire)
-  const filteredPlazas = (concessionaire === 'All' && spv === 'All')
-    ? allPlazas
-    : getPlazas(concessionaire, spv)
+  // ── Cross-cascading between State, Highway, Concessionaire, SPV ──────────────
+  // Each filter's options are derived from the plaza set implied by the OTHER
+  // three selections, so picking any one narrows the rest both ways.
 
-  const concPlazaSet = (concessionaire === 'All' && spv === 'All')
-    ? null
-    : new Set(filteredPlazas.map(p => p.toLowerCase().trim()))
+  const norm = (s: string) => s.toLowerCase().trim()
 
+  // Plaza set implied by State + Highway (from plaza_master)
+  function plazasForStateHighway(st: string, hw: string): Set<string> | null {
+    if (st === 'All' && hw === 'All') return null
+    return new Set(
+      plazaMaster
+        .filter(p => (st === 'All' || p.state === st) && (hw === 'All' || p.highway === hw))
+        .map(p => norm(p.plaza_name))
+    )
+  }
+
+  // Plaza set implied by Concessionaire + SPV (from plaza_concession)
+  function plazasForConcSpv(conc: string, sp: string): Set<string> | null {
+    if (conc === 'All' && sp === 'All') return null
+    return new Set(getPlazas(conc, sp).map(norm))
+  }
+
+  // State options: derived from plazas implied by Highway + Concessionaire + SPV
+  const states = useMemo(() => {
+    const hwSet   = plazasForStateHighway('All', highway)
+    const csSet   = plazasForConcSpv(concessionaire, spv)
+    let pool = plazaMaster
+    if (hwSet) pool = pool.filter(p => hwSet.has(norm(p.plaza_name)))
+    if (csSet) pool = pool.filter(p => csSet.has(norm(p.plaza_name)))
+    return ['All', ...[...new Set(pool.map(p => p.state).filter(Boolean))].sort()]
+  }, [plazaMaster, highway, concessionaire, spv])
+
+  // Highway options: derived from plazas implied by State + Concessionaire + SPV
+  const highways = useMemo(() => {
+    const stSet = plazasForStateHighway(state, 'All')
+    const csSet = plazasForConcSpv(concessionaire, spv)
+    let pool = plazaMaster
+    if (stSet) pool = pool.filter(p => stSet.has(norm(p.plaza_name)))
+    if (csSet) pool = pool.filter(p => csSet.has(norm(p.plaza_name)))
+    return ['All', ...[...new Set(pool.map(p => p.highway).filter(Boolean))].sort()]
+  }, [plazaMaster, state, concessionaire, spv])
+
+  // Concessionaire options: derived from plazas implied by State + Highway + SPV
+  const concessionaireOptions = useMemo(() => {
+    const geoSet = plazasForStateHighway(state, highway)
+    const spvSet = spv === 'All' ? null : plazasForConcSpv('All', spv)
+    let pool = concessionaires
+    if (geoSet || spvSet) {
+      const nameSet = new Set(allPlazas.filter(p => (!geoSet || geoSet.has(norm(p))) && (!spvSet || spvSet.has(norm(p)))).map(norm))
+      // A concessionaire qualifies if it has at least one plaza in nameSet
+      pool = concessionaires.filter(c => getPlazas(c, 'All').some(p => nameSet.has(norm(p))))
+    }
+    return pool
+  }, [concessionaires, state, highway, spv, allPlazas])
+
+  // SPV options: derived from plazas implied by State + Highway + Concessionaire
+  const spvOptions = useMemo(() => {
+    const geoSet = plazasForStateHighway(state, highway)
+    let opts = getSpvs(concessionaire)
+    if (geoSet) {
+      opts = opts.filter(s => getPlazas(concessionaire, s).some(p => geoSet.has(norm(p))))
+    }
+    return opts
+  }, [state, highway, concessionaire, plazaMaster])
+
+  // Combined plaza-name constraint from all four geo/concession filters together
+  const combinedPlazaSet = useMemo(() => {
+    const geoSet = plazasForStateHighway(state, highway)
+    const csSet  = plazasForConcSpv(concessionaire, spv)
+    if (!geoSet && !csSet) return null
+    if (geoSet && csSet) return new Set([...geoSet].filter(p => csSet.has(p)))
+    return geoSet ?? csSet
+  }, [plazaMaster, state, highway, concessionaire, spv])
+
+  function handleStateChange(val: string) { setState(val); setSelectedPlazas([]) }
+  function handleHighwayChange(val: string) { setHighway(val); setSelectedPlazas([]) }
   function handleConcChange(val: string) { setConcessionaire(val); setSpv('All'); setSelectedPlazas([]) }
   function handleSpvChange(val: string)  { setSpv(val); setSelectedPlazas([]) }
   function togglePlaza(p: string) {
     setSelectedPlazas(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
   }
+  function resetFilters() {
+    setState('All'); setHighway('All'); setConcessionaire('All'); setSpv('All'); setSelectedPlazas([]); setSearch('')
+  }
+
+  const filteredPlazas = combinedPlazaSet
+    ? allPlazas.filter(p => combinedPlazaSet.has(norm(p)))
+    : allPlazas
+
+  const anyFilterActive = state !== 'All' || highway !== 'All' || concessionaire !== 'All' || spv !== 'All'
 
   const filtered = useMemo(() => {
     let d = data
-    if (concPlazaSet) d = d.filter(r => concPlazaSet.has(r.plaza_name.toLowerCase().trim()))
+    if (combinedPlazaSet) d = d.filter(r => combinedPlazaSet.has(norm(r.plaza_name)))
     if (selectedPlazas.length > 0) {
-      const sel = new Set(selectedPlazas.map(p => p.toLowerCase().trim()))
-      d = d.filter(r => sel.has(r.plaza_name.toLowerCase().trim()))
+      const sel = new Set(selectedPlazas.map(norm))
+      d = d.filter(r => sel.has(norm(r.plaza_name)))
     }
     return d
-  }, [data, concPlazaSet, selectedPlazas])
+  }, [data, combinedPlazaSet, selectedPlazas])
 
   const { rows, allFYs } = useMemo(() => buildPlazaRows(filtered), [filtered])
 
@@ -273,12 +352,26 @@ export default function CAGRPage() {
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16, alignItems: 'flex-end' }}>
+        {/* State */}
+        <div style={filterWrap}>
+          <label style={lblStyle}>State</label>
+          <select value={state} onChange={e => handleStateChange(e.target.value)} style={selStyle}>
+            {states.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        {/* Highway */}
+        <div style={filterWrap}>
+          <label style={lblStyle}>Highway</label>
+          <select value={highway} onChange={e => handleHighwayChange(e.target.value)} style={selStyle}>
+            {highways.map(h => <option key={h} value={h}>{h}</option>)}
+          </select>
+        </div>
         {/* Concessionaire */}
         <div style={filterWrap}>
           <label style={lblStyle}>Concessionaire</label>
           <select value={concessionaire} onChange={e => handleConcChange(e.target.value)} style={selStyle}>
             <option value="All">All Concessionaires</option>
-            {concessionaires.map(c => <option key={c} value={c}>{c}</option>)}
+            {concessionaireOptions.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         {/* SPV */}
@@ -289,6 +382,14 @@ export default function CAGRPage() {
             {spvOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        {anyFilterActive && (
+          <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 7 }}>
+            <span onClick={resetFilters}
+              style={{ fontSize: 11, color: '#c94f4f', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              × Reset filters
+            </span>
+          </div>
+        )}
         {/* Plaza multi-select */}
         <div ref={plazaDropRef} style={{ flex: '2 1 280px', position: 'relative' }}>
           <label style={lblStyle}>Filter by Plaza</label>
