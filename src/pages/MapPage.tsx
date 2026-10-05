@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet'
 import { usePlazaMaster } from '../hooks/usePlazaMaster'
 import { useConcessionaires } from '../hooks/useConcessionaires'
 import { PageHeader, EmptyState } from '../components/UI'
@@ -27,6 +27,14 @@ function FitBounds({ plazas, routePoints }: { plazas: PlazaMaster[]; routePoints
       map.fitBounds(allPoints, { padding: [40, 40] })
     }
   }, [plazas, routePoints, map])
+  return null
+}
+
+// ─── Zoom tracker (drives zoom-aware marker size) ────────────────────────────
+
+function ZoomTracker({ onZoom }: { onZoom: (z: number) => void }) {
+  const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) })
+  useEffect(() => { onZoom(map.getZoom()) }, [map, onZoom])
   return null
 }
 
@@ -72,6 +80,7 @@ export default function MapPage() {
   const [selectedNames,  setSelectedNames]  = useState<string[]>([])
   const [searchOpen,     setSearchOpen]     = useState(false)
   const [selectedPlaza,  setSelectedPlaza]  = useState<PlazaMaster | null>(null)
+  const [zoom,           setZoom]           = useState(5)
 
   // NH route state
   const [nhInput,        setNhInput]        = useState('')
@@ -368,13 +377,17 @@ export default function MapPage() {
             key="plaza-map"
             center={center}
             zoom={5}
+            zoomSnap={0.25}
+            zoomDelta={0.5}
             style={{ height: '100%', width: '100%', zIndex: 0 }}
             scrollWheelZoom={true}
           >
             <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+              subdomains="abcd"
+              attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>'
             />
+            <ZoomTracker onZoom={setZoom} />
             <FitBounds plazas={displayPlazas} routePoints={routePoints} />
 
             {/* NH Route polyline */}
@@ -388,7 +401,8 @@ export default function MapPage() {
             {/* Plaza markers */}
             {displayPlazas.map(plaza => {
               const onNH    = nhQueried ? nhPlazas.has(plaza.id) : true
-              const radius  = selectedPlaza?.id === plaza.id ? 11 : onNH ? 8 : 6
+              const base    = Math.max(3, Math.min(9, Math.round(zoom - 1)))
+              const radius  = selectedPlaza?.id === plaza.id ? base + 4 : onNH ? base : Math.max(2, base - 2)
               return (
                 <CircleMarker
                   key={plaza.id}
@@ -397,9 +411,9 @@ export default function MapPage() {
                   pathOptions={{
                     fillColor: getColor(plaza),
                     color: selectedPlaza?.id === plaza.id ? '#1a2540' : '#fff',
-                    weight: selectedPlaza?.id === plaza.id ? 3 : 1.5,
+                    weight: selectedPlaza?.id === plaza.id ? 3 : 1,
                     opacity: 1,
-                    fillOpacity: nhQueried && !onNH ? 0.4 : 0.9,
+                    fillOpacity: nhQueried && !onNH ? 0.35 : 0.8,
                   }}
                   eventHandlers={{ click: () => setSelectedPlaza(plaza) }}
                 >
