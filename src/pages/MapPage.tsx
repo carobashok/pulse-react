@@ -240,8 +240,8 @@ export default function MapPage() {
       />
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 10, padding: '12px 16px', background: '#fff', border: '1px solid #e2e6ed', borderRadius: 6, alignItems: 'flex-end' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '2 1 220px', position: 'relative' }}>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8, padding: '8px 12px', background: '#fff', border: '1px solid #e2e6ed', borderRadius: 6, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '2 1 200px', position: 'relative' }}>
           <label style={lblS}>Select Plazas {selectedNames.length > 0 && `(${selectedNames.length})`}</label>
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center',
@@ -318,14 +318,6 @@ export default function MapPage() {
             {spvOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        {(state !== 'All' || highway !== 'All' || concessionaire !== 'All' || spv !== 'All') && (
-          <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 7 }}>
-            <span onClick={() => { setState('All'); setHighway('All'); setConcessionaire('All'); setSpv('All'); setFilterBy('none') }}
-              style={{ fontSize: 11, color: '#c94f4f', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              × Reset filters
-            </span>
-          </div>
-        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 120 }}>
           <label style={lblS}>Color By</label>
           <select value={filterBy} onChange={e => setFilterBy(e.target.value as typeof filterBy)} style={selS}>
@@ -335,42 +327,47 @@ export default function MapPage() {
             <option value="concessionaire">Concessionaire</option>
           </select>
         </div>
+        {/* NH Route (compact) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <label style={lblS}>NH Route</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              value={nhInput}
+              onChange={e => setNhInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleNHSearch()}
+              placeholder="e.g. 44"
+              style={{ ...inpS, width: 80 }}
+            />
+            <button onClick={handleNHSearch} disabled={!nhInput.trim()}
+              style={{ padding: '6px 12px', background: '#1a2540', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer', fontSize: 12, fontFamily: 'DM Sans', fontWeight: 600, opacity: !nhInput.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+              Show
+            </button>
+            {nhQueried && (
+              <button onClick={clearRoute}
+                style={{ padding: '6px 10px', background: '#fff', border: '1px solid #dde2ea', borderRadius: 4, color: '#c94f4f', cursor: 'pointer', fontSize: 11, fontFamily: 'DM Sans', whiteSpace: 'nowrap' }}>
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
         <button onClick={() => { setSearch(''); setSelectedNames([]); setHighway('All'); setState('All'); setConcessionaire('All'); setSpv('All'); setFilterBy('none') }}
           style={{ padding: '6px 12px', background: '#fff', border: '1px solid #dde2ea', borderRadius: 4, color: '#8995a8', cursor: 'pointer', fontSize: 11, fontFamily: 'DM Sans', alignSelf: 'flex-end' }}>
           Reset
         </button>
-      </div>
-
-      {/* NH Route bar */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 10, padding: '10px 16px', background: '#fff', border: '1px solid #e2e6ed', borderRadius: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ ...lblS, marginBottom: 0, whiteSpace: 'nowrap' }}>Show NH Route</label>
-        <input
-          value={nhInput}
-          onChange={e => setNhInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleNHSearch()}
-          placeholder="e.g. 44 or NH-44"
-          style={{ ...inpS, width: 140 }}
-        />
-        <button onClick={handleNHSearch} disabled={!nhInput.trim()}
-          style={{ padding: '6px 16px', background: '#1a2540', border: 'none', borderRadius: 4, color: '#fff', cursor: 'pointer', fontSize: 12, fontFamily: 'DM Sans', fontWeight: 600, opacity: !nhInput.trim() ? 0.5 : 1 }}>
-          Show Route
-        </button>
-        {nhQueried && (
-          <button onClick={clearRoute}
-            style={{ padding: '6px 12px', background: '#fff', border: '1px solid #dde2ea', borderRadius: 4, color: '#c94f4f', cursor: 'pointer', fontSize: 11, fontFamily: 'DM Sans' }}>
-            Clear Route
-          </button>
+        {((nhQueried && routePoints.length > 0) || routeError) && (
+          <div style={{ flexBasis: '100%', fontSize: 11 }}>
+            {nhQueried && routePoints.length > 0 && (
+              <span style={{ color: '#16a085', fontWeight: 500 }}>
+                ✓ NH-{nhQueried.replace(/[^0-9]/g, '')} route loaded · {nhPlazas.size} plaza{nhPlazas.size !== 1 ? 's' : ''} on this highway
+              </span>
+            )}
+            {routeError && <span style={{ color: '#c94f4f' }}>{routeError}</span>}
+          </div>
         )}
-        {nhQueried && routePoints.length > 0 && (
-          <span style={{ fontSize: 11, color: '#16a085', fontWeight: 500 }}>
-            ✓ NH-{nhQueried.replace(/[^0-9]/g, '')} route loaded · {nhPlazas.size} plaza{nhPlazas.size !== 1 ? 's' : ''} on this highway
-          </span>
-        )}
-        {routeError && <span style={{ fontSize: 11, color: '#c94f4f' }}>{routeError}</span>}
       </div>
 
       {/* Map + sidebar */}
-      <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', gap: 12, flex: 1, minHeight: 480 }}>
         {/* Map */}
         <div style={{ flex: 1, borderRadius: 6, overflow: 'hidden', border: '1px solid #e2e6ed', position: 'relative' }}>
           <MapContainer
@@ -497,7 +494,7 @@ export default function MapPage() {
 }
 
 function PageWrap({ children }: { children: React.ReactNode }) {
-  return <div style={{ padding: '24px 28px', height: '100%', display: 'flex', flexDirection: 'column' }}>{children}</div>
+  return <div style={{ padding: '14px 20px', height: '100%', display: 'flex', flexDirection: 'column' }}>{children}</div>
 }
 
 const lblS: React.CSSProperties = { fontSize: 10, fontWeight: 600, color: '#a0aabc', textTransform: 'uppercase', letterSpacing: '0.07em' }
