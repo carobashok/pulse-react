@@ -19,7 +19,7 @@ export function useConcessionaires() {
       const [conc, spv, plz] = await Promise.all([
         supabase.from('concessionaire_master').select('id, name'),
         supabase.from('spv_master').select('id, name, concessionaire_id'),
-        supabase.from('plaza_master').select('plaza_name, spv_id').not('spv_id', 'is', null),
+        supabase.from('plaza_master').select('plaza_name, spv_id, concessionaire_id').or('spv_id.not.is.null,concessionaire_id.not.is.null'),
       ])
 
       // With RLS on, a missing read policy returns an error or empty list — make it visible.
@@ -33,12 +33,13 @@ export function useConcessionaires() {
       )
 
       const rows: ConcessionaireRow[] = []
-      for (const p of (plz.data ?? []) as { plaza_name: string; spv_id: number }[]) {
-        const s = spvById.get(p.spv_id)
-        if (!s) continue
+      for (const p of (plz.data ?? []) as { plaza_name: string; spv_id: number | null; concessionaire_id: number | null }[]) {
+        const s = p.spv_id != null ? spvById.get(p.spv_id) : undefined
+        const cid = p.concessionaire_id ?? s?.concessionaire_id
+        if (cid == null) continue
         rows.push({
-          concessionaire_name: concById.get(s.concessionaire_id) ?? '',
-          spv_name: s.name,
+          concessionaire_name: concById.get(cid) ?? '',
+          spv_name: s?.name ?? '',
           fee_plaza_name: p.plaza_name,
         })
       }

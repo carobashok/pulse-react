@@ -13,14 +13,15 @@ interface Plaza {
   state: string | null
   direction: string | null
   spv_id: number | null
+  concessionaire_id: number | null
 }
 
 interface ConcMaster { id: number; name: string }
 interface SpvMaster { id: number; name: string; concessionaire_id: number }
 
-type FieldKey = 'highway' | 'section_of_highway' | 'state' | 'latitude' | 'longitude' | 'spv_id'
+type FieldKey = 'highway' | 'section_of_highway' | 'state' | 'latitude' | 'longitude' | 'spv_id' | 'conc_id'
 
-const EDITABLE_FIELDS: FieldKey[] = ['latitude', 'longitude', 'highway', 'section_of_highway', 'state', 'spv_id']
+const EDITABLE_FIELDS: FieldKey[] = ['latitude', 'longitude', 'highway', 'section_of_highway', 'state', 'spv_id', 'conc_id']
 
 interface EditRow {
   latitude: string
@@ -29,7 +30,7 @@ interface EditRow {
   section_of_highway: string
   state: string
   spv_id: string   // '' = none
-  conc_id: string  // UI-only helper (not saved); '' = none
+  conc_id: string  // saved as concessionaire_id; '' = none
 }
 
 function toEditRow(p: Plaza, spvs: SpvMaster[] = []): EditRow {
@@ -41,7 +42,7 @@ function toEditRow(p: Plaza, spvs: SpvMaster[] = []): EditRow {
     section_of_highway: p.section_of_highway ?? '',
     state: p.state ?? '',
     spv_id: p.spv_id != null ? String(p.spv_id) : '',
-    conc_id: spv ? String(spv.concessionaire_id) : '',
+    conc_id: p.concessionaire_id != null ? String(p.concessionaire_id) : spv ? String(spv.concessionaire_id) : '',
   }
 }
 
@@ -63,15 +64,17 @@ export default function PlazaDetailsPage() {
       setLoading(true)
       const [pz, cm, sm] = await Promise.all([
         supabase.from('plaza_master')
-          .select('id, plaza_name, highway, section_of_highway, chainage_km, latitude, longitude, state, direction, spv_id')
+          .select('id, plaza_name, highway, section_of_highway, chainage_km, latitude, longitude, state, direction, spv_id, concessionaire_id')
           .order('plaza_name'),
         supabase.from('concessionaire_master').select('id, name').order('name'),
         supabase.from('spv_master').select('id, name, concessionaire_id').order('name'),
       ])
+      if (pz.error) setMasterError('Could not load plazas: ' + pz.error.message + ' — has the concessionaire_id column been added (SQL step)?')
       setPlazas((pz.data ?? []) as Plaza[])
       setConcs((cm.data ?? []) as ConcMaster[])
       setSpvs((sm.data ?? []) as SpvMaster[])
-      if (cm.error || sm.error) setMasterError((cm.error ?? sm.error)!.message)
+      if (pz.error) { /* message already set above */ }
+      else if (cm.error || sm.error) setMasterError((cm.error ?? sm.error)!.message)
       else if ((cm.data ?? []).length === 0 || (sm.data ?? []).length === 0)
         setMasterError('Concessionaire/SPV lists are empty — check that SELECT policies exist for anon on concessionaire_master and spv_master.')
       setLoading(false)
@@ -87,7 +90,7 @@ export default function PlazaDetailsPage() {
     highway: p => isBlank(p.highway),
     section: p => isBlank(p.section_of_highway),
     geo:     p => hasMissingGeo(p),
-    spv:     p => p.spv_id == null,
+    spv:     p => p.concessionaire_id == null && p.spv_id == null,
   }
 
   const display = useMemo(() => {
@@ -167,6 +170,7 @@ export default function PlazaDetailsPage() {
       section_of_highway: row.section_of_highway.trim() || null,
       state: row.state.trim() || null,
       spv_id: row.spv_id === '' ? null : Number(row.spv_id),
+      concessionaire_id: row.conc_id === '' ? null : Number(row.conc_id),
       updated_at: new Date().toISOString(),
     }
 
@@ -220,7 +224,7 @@ export default function PlazaDetailsPage() {
           { key: 'highway', label: 'Highway'        },
           { key: 'section', label: 'Section'        },
           { key: 'geo',     label: 'Lat / Long'     },
-          { key: 'spv',     label: 'SPV'            },
+          { key: 'spv',     label: 'Concessionaire' },
         ] as const).map(t => {
           const { missing, complete } = tileCount(t.key)
           const active = filterMode === t.key
