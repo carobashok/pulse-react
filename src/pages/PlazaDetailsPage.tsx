@@ -40,7 +40,7 @@ export default function PlazaDetailsPage() {
   const [plazas,  setPlazas]  = useState<Plaza[]>([])
   const [loading, setLoading] = useState(true)
   const [search,  setSearch]  = useState('')
-  const [filterMode, setFilterMode] = useState<'all' | 'missing_geo' | 'complete'>('all')
+  const [filterMode, setFilterMode] = useState<'all' | 'state' | 'highway' | 'section' | 'geo'>('all')
   const [saving,  setSaving]  = useState<Record<number, boolean>>({})
   const [saved,   setSaved]   = useState<Record<number, boolean>>({})
   const [errors,  setErrors]  = useState<Record<number, string>>({})
@@ -59,7 +59,15 @@ export default function PlazaDetailsPage() {
     load()
   }, [])
 
+  const isBlank = (v: string | null | undefined) => v == null || String(v).trim() === ''
   const hasMissingGeo = (p: Plaza) => p.latitude == null || p.longitude == null
+
+  const missingBy: Record<'state' | 'highway' | 'section' | 'geo', (p: Plaza) => boolean> = {
+    state:   p => isBlank(p.state),
+    highway: p => isBlank(p.highway),
+    section: p => isBlank(p.section_of_highway),
+    geo:     p => hasMissingGeo(p),
+  }
 
   const display = useMemo(() => {
     let list = plazas
@@ -72,13 +80,14 @@ export default function PlazaDetailsPage() {
         (p.section_of_highway ?? '').toLowerCase().includes(q)
       )
     }
-    if (filterMode === 'missing_geo') list = list.filter(p => hasMissingGeo(p))
-    if (filterMode === 'complete')    list = list.filter(p => !hasMissingGeo(p))
+    if (filterMode !== 'all') list = list.filter(missingBy[filterMode])
     return list
   }, [plazas, search, filterMode])
 
-  const missingCount  = plazas.filter(p => hasMissingGeo(p)).length
-  const completeCount = plazas.length - missingCount
+  const tileCount = (k: 'state' | 'highway' | 'section' | 'geo') => {
+    const missing = plazas.filter(missingBy[k]).length
+    return { missing, complete: plazas.length - missing }
+  }
 
   function getRow(p: Plaza): EditRow {
     return editVal[p.id] ?? toEditRow(p)
@@ -124,19 +133,23 @@ export default function PlazaDetailsPage() {
       updated_at: new Date().toISOString(),
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('plaza_master')
       .update(payload)
       .eq('id', p.id)
+      .select('id')
 
     setSaving(s => ({ ...s, [p.id]: false }))
-    if (!error) {
+    if (error) {
+      setErrors(e => ({ ...e, [p.id]: error.message }))
+    } else if (!data || data.length === 0) {
+      // RLS can silently match zero rows instead of throwing — surface it explicitly
+      setErrors(e => ({ ...e, [p.id]: 'Blocked (check RLS policy)' }))
+    } else {
       setPlazas(list => list.map(x => x.id === p.id ? { ...x, ...payload } : x))
       setEditVal(ev => { const n = { ...ev }; delete n[p.id]; return n })
       setSaved(s => ({ ...s, [p.id]: true }))
       setTimeout(() => setSaved(s => ({ ...s, [p.id]: false })), 2000)
-    } else {
-      setErrors(e => ({ ...e, [p.id]: error.message }))
     }
   }
 
@@ -154,22 +167,44 @@ export default function PlazaDetailsPage() {
 
       {/* Stats */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[
-          { label: 'Total Plazas',   value: plazas.length,  color: '#1a2540', key: 'all'          },
-          { label: 'Missing Lat/Long', value: missingCount, color: '#e07b10', key: 'missing_geo'  },
-          { label: 'Complete',       value: completeCount,  color: '#16a085', key: 'complete'      },
-        ].map(s => (
-          <div key={s.key}
-            onClick={() => setFilterMode(f => f === s.key ? 'all' : s.key as typeof filterMode)}
-            style={{
-              background: filterMode === s.key ? s.color : '#fff',
-              border: `1px solid ${s.color}40`, borderRadius: 6,
-              padding: '8px 16px', minWidth: 140, cursor: 'pointer',
-            }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: filterMode === s.key ? '#fff' : '#a0aabc', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>{s.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono', color: filterMode === s.key ? '#fff' : s.color }}>{s.value}</div>
-          </div>
-        ))}
+        <div
+          onClick={() => setFilterMode('all')}
+          style={{
+            background: filterMode === 'all' ? '#1a2540' : '#fff',
+            border: '1px solid #1a254040', borderRadius: 6,
+            padding: '8px 16px', minWidth: 130, cursor: 'pointer',
+          }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: filterMode === 'all' ? '#fff' : '#a0aabc', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Total Plazas</div>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono', color: filterMode === 'all' ? '#fff' : '#1a2540' }}>{plazas.length}</div>
+        </div>
+
+        {([
+          { key: 'state',   label: 'State'          },
+          { key: 'highway', label: 'Highway'        },
+          { key: 'section', label: 'Section'        },
+          { key: 'geo',     label: 'Lat / Long'     },
+        ] as const).map(t => {
+          const { missing, complete } = tileCount(t.key)
+          const active = filterMode === t.key
+          const done   = missing === 0
+          const accent = done ? '#16a085' : '#e07b10'
+          return (
+            <div key={t.key}
+              onClick={() => setFilterMode(f => f === t.key ? 'all' : t.key)}
+              title={`Click to show plazas with missing ${t.label.toLowerCase()}`}
+              style={{
+                background: active ? accent : '#fff',
+                border: `1px solid ${accent}40`, borderRadius: 6,
+                padding: '8px 16px', minWidth: 150, cursor: 'pointer',
+              }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: active ? '#fff' : '#a0aabc', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Missing {t.label}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 20, fontWeight: 700, fontFamily: 'DM Mono', color: active ? '#fff' : accent }}>{missing}</span>
+                <span style={{ fontSize: 11, fontFamily: 'DM Mono', color: active ? '#ffffffcc' : '#16a085' }}>{complete} complete</span>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Search */}
