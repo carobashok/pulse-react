@@ -12,11 +12,15 @@ interface Plaza {
   longitude: number | null
   state: string | null
   direction: string | null
+  spv_id: number | null
 }
 
-type FieldKey = 'highway' | 'section_of_highway' | 'state' | 'latitude' | 'longitude'
+interface ConcMaster { id: number; name: string }
+interface SpvMaster { id: number; name: string; concessionaire_id: number }
 
-const EDITABLE_FIELDS: FieldKey[] = ['latitude', 'longitude', 'highway', 'section_of_highway', 'state']
+type FieldKey = 'highway' | 'section_of_highway' | 'state' | 'latitude' | 'longitude' | 'spv_id'
+
+const EDITABLE_FIELDS: FieldKey[] = ['latitude', 'longitude', 'highway', 'section_of_highway', 'state', 'spv_id']
 
 interface EditRow {
   latitude: string
@@ -24,15 +28,20 @@ interface EditRow {
   highway: string
   section_of_highway: string
   state: string
+  spv_id: string   // '' = none
+  conc_id: string  // UI-only helper (not saved); '' = none
 }
 
-function toEditRow(p: Plaza): EditRow {
+function toEditRow(p: Plaza, spvs: SpvMaster[] = []): EditRow {
+  const spv = p.spv_id != null ? spvs.find(s => s.id === p.spv_id) : undefined
   return {
     latitude: p.latitude ?? '' as any,
     longitude: p.longitude ?? '' as any,
     highway: p.highway ?? '',
     section_of_highway: p.section_of_highway ?? '',
     state: p.state ?? '',
+    spv_id: p.spv_id != null ? String(p.spv_id) : '',
+    conc_id: spv ? String(spv.concessionaire_id) : '',
   }
 }
 
@@ -40,20 +49,31 @@ export default function PlazaDetailsPage() {
   const [plazas,  setPlazas]  = useState<Plaza[]>([])
   const [loading, setLoading] = useState(true)
   const [search,  setSearch]  = useState('')
-  const [filterMode, setFilterMode] = useState<'all' | 'state' | 'highway' | 'section' | 'geo'>('all')
+  const [filterMode, setFilterMode] = useState<'all' | 'state' | 'highway' | 'section' | 'geo' | 'spv'>('all')
   const [saving,  setSaving]  = useState<Record<number, boolean>>({})
   const [saved,   setSaved]   = useState<Record<number, boolean>>({})
   const [errors,  setErrors]  = useState<Record<number, string>>({})
   const [editVal, setEditVal] = useState<Record<number, EditRow>>({})
+  const [concs, setConcs] = useState<ConcMaster[]>([])
+  const [spvs,  setSpvs]  = useState<SpvMaster[]>([])
+  const [masterError, setMasterError] = useState<string | null>(null)
 
   useEffect(() => {
     async function load() {
       setLoading(true)
-      const { data } = await supabase
-        .from('plaza_master')
-        .select('id, plaza_name, highway, section_of_highway, chainage_km, latitude, longitude, state, direction')
-        .order('plaza_name')
-      setPlazas((data ?? []) as Plaza[])
+      const [pz, cm, sm] = await Promise.all([
+        supabase.from('plaza_master')
+          .select('id, plaza_name, highway, section_of_highway, chainage_km, latitude, longitude, state, direction, spv_id')
+          .order('plaza_name'),
+        supabase.from('concessionaire_master').select('id, name').order('name'),
+        supabase.from('spv_master').select('id, name, concessionaire_id').order('name'),
+      ])
+      setPlazas((pz.data ?? []) as Plaza[])
+      setConcs((cm.data ?? []) as ConcMaster[])
+      setSpvs((sm.data ?? []) as SpvMaster[])
+      if (cm.error || sm.error) setMasterError((cm.error ?? sm.error)!.message)
+      else if ((cm.data ?? []).length === 0 || (sm.data ?? []).length === 0)
+        setMasterError('Concessionaire/SPV lists are empty — check that SELECT policies exist for anon on concessionaire_master and spv_master.')
       setLoading(false)
     }
     load()
@@ -62,11 +82,12 @@ export default function PlazaDetailsPage() {
   const isBlank = (v: string | null | undefined) => v == null || String(v).trim() === ''
   const hasMissingGeo = (p: Plaza) => p.latitude == null || p.longitude == null
 
-  const missingBy: Record<'state' | 'highway' | 'section' | 'geo', (p: Plaza) => boolean> = {
+  const missingBy: Record<'state' | 'highway' | 'section' | 'geo' | 'spv', (p: Plaza) => boolean> = {
     state:   p => isBlank(p.state),
     highway: p => isBlank(p.highway),
     section: p => isBlank(p.section_of_highway),
     geo:     p => hasMissingGeo(p),
+    spv:     p => p.spv_id == null,
   }
 
   const display = useMemo(() => {
@@ -84,26 +105,41 @@ export default function PlazaDetailsPage() {
     return list
   }, [plazas, search, filterMode])
 
-  const tileCount = (k: 'state' | 'highway' | 'section' | 'geo') => {
+  const tileCount = (k: 'state' | 'highway' | 'section' | 'geo' | 'spv') => {
     const missing = plazas.filter(missingBy[k]).length
     return { missing, complete: plazas.length - missing }
   }
 
   function getRow(p: Plaza): EditRow {
-    return editVal[p.id] ?? toEditRow(p)
+    return editVal[p.id] ?? toEditRow(p, spvs)
   }
 
   function isDirty(p: Plaza): boolean {
     const cur = getRow(p)
-    const orig = toEditRow(p)
+    const orig = toEditRow(p, spvs)
     return EDITABLE_FIELDS.some(f => String(cur[f]) !== String(orig[f]))
   }
 
-  function updateField(id: number, field: FieldKey, value: string) {
+  function setRowFields(id: number, patch: Partial<EditRow>) {
     setEditVal(ev => ({
       ...ev,
-      [id]: { ...(ev[id] ?? toEditRow(plazas.find(p => p.id === id)!)), [field]: value }
+      [id]: { ...(ev[id] ?? toEditRow(plazas.find(p => p.id === id)!, spvs)), ...patch }
     }))
+  }
+
+  function updateField(id: number, field: FieldKey, value: string) {
+    setRowFields(id, { [field]: value } as Partial<EditRow>)
+  }
+
+  function handleConcChange(p: Plaza, concId: string) {
+    const cur = getRow(p)
+    const spvStillValid = cur.spv_id !== '' && spvs.some(s => String(s.id) === cur.spv_id && String(s.concessionaire_id) === concId)
+    setRowFields(p.id, { conc_id: concId, spv_id: spvStillValid ? cur.spv_id : '' })
+  }
+
+  function handleSpvChange(p: Plaza, spvId: string) {
+    const spv = spvs.find(s => String(s.id) === spvId)
+    setRowFields(p.id, { spv_id: spvId, conc_id: spv ? String(spv.concessionaire_id) : getRow(p).conc_id })
   }
 
   function validate(row: EditRow): string | null {
@@ -130,6 +166,7 @@ export default function PlazaDetailsPage() {
       highway: row.highway.trim() || null,
       section_of_highway: row.section_of_highway.trim() || null,
       state: row.state.trim() || null,
+      spv_id: row.spv_id === '' ? null : Number(row.spv_id),
       updated_at: new Date().toISOString(),
     }
 
@@ -162,7 +199,7 @@ export default function PlazaDetailsPage() {
     <div style={{ padding: '24px 28px', maxWidth: 1300 }}>
       <PageHeader
         title="Plaza Details"
-        subtitle="Update coordinates, highway, section & state · Plaza names come from the ingestion pipeline and are read-only here"
+        subtitle="Update coordinates, highway, section, state, concessionaire & SPV · Plaza names come from the ingestion pipeline and are read-only here"
       />
 
       {/* Stats */}
@@ -183,6 +220,7 @@ export default function PlazaDetailsPage() {
           { key: 'highway', label: 'Highway'        },
           { key: 'section', label: 'Section'        },
           { key: 'geo',     label: 'Lat / Long'     },
+          { key: 'spv',     label: 'SPV'            },
         ] as const).map(t => {
           const { missing, complete } = tileCount(t.key)
           const active = filterMode === t.key
@@ -222,6 +260,12 @@ export default function PlazaDetailsPage() {
         💡 Edit any field below and press <strong>Enter</strong> or click <strong>Save</strong> to commit. Latitude must be between -90 and 90, longitude between -180 and 180. Leave a field blank to clear it.
       </div>
 
+      {masterError && (
+        <div style={{ fontSize: 11, color: '#c0392b', marginBottom: 12, background: '#fdecea', border: '1px solid #f5c6cb', borderRadius: 4, padding: '8px 12px' }}>
+          ⚠ {masterError}
+        </div>
+      )}
+
       {loading && <EmptyState message="Loading…" />}
 
       {!loading && (
@@ -236,6 +280,8 @@ export default function PlazaDetailsPage() {
                   <th style={{ ...thS, width: 140 }}>Highway</th>
                   <th style={thS}>Section of Highway</th>
                   <th style={{ ...thS, width: 130 }}>State</th>
+                  <th style={{ ...thS, width: 200 }}>Concessionaire</th>
+                  <th style={{ ...thS, width: 200 }}>SPV</th>
                   <th style={{ ...thS, width: 140 }}>Action</th>
                 </tr>
               </thead>
@@ -311,6 +357,26 @@ export default function PlazaDetailsPage() {
                           placeholder="—"
                           style={cellInputStyle(dirty)}
                         />
+                      </td>
+
+                      {/* Concessionaire */}
+                      <td style={{ padding: '6px 8px' }}>
+                        <select value={row.conc_id} onChange={e => handleConcChange(p, e.target.value)}
+                          style={cellInputStyle(dirty)}>
+                          <option value="">—</option>
+                          {concs.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+                        </select>
+                      </td>
+
+                      {/* SPV (filtered by concessionaire) */}
+                      <td style={{ padding: '6px 8px' }}>
+                        <select value={row.spv_id} onChange={e => handleSpvChange(p, e.target.value)}
+                          style={cellInputStyle(dirty)}>
+                          <option value="">—</option>
+                          {spvs
+                            .filter(s => row.conc_id === '' || String(s.concessionaire_id) === row.conc_id)
+                            .map(s => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                        </select>
                       </td>
 
                       {/* Action */}

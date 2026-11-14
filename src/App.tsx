@@ -8,8 +8,9 @@ import MapPage          from './pages/MapPage'
 import CoveragePage     from './pages/CoveragePage'
 import PlazaNamesPage   from './pages/PlazaNamesPage'
 import PlazaDetailsPage from './pages/PlazaDetailsPage'
+import MastersPage from './pages/MastersPage'
 
-type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'map' | 'coverage' | 'admin' | 'plazanames' | 'plazadetails'
+type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'map' | 'coverage' | 'admin' | 'plazanames' | 'plazadetails' | 'masters'
 
 const NAV = [
   { id: 'dashboard' as Page, label: 'Dashboard',        sub: 'Network overview'    },
@@ -24,6 +25,7 @@ const ADMIN_SUB = [
   { id: 'admin'        as Page, label: 'Vehicle Templates', sub: 'Category grouping'        },
   { id: 'plazanames'   as Page, label: 'Plaza Names',       sub: 'Canonical mapping'        },
   { id: 'plazadetails' as Page, label: 'Plaza Details',     sub: 'Lat/long, highway, state' },
+  { id: 'masters' as Page,      label: 'Concessionaires & SPVs', sub: 'Master data' },
 ]
 
 export default function App() {
@@ -37,11 +39,11 @@ export default function App() {
 
   const ADMIN_PIN = '1900'
 
-  const isAdminPage = page === 'admin' || page === 'plazanames' || page === 'plazadetails'
+  const isAdminPage = page === 'admin' || page === 'plazanames' || page === 'plazadetails' || page === 'masters'
 
   function navTo(id: Page) {
     setPage(id)
-    if (id === 'admin' || id === 'plazanames' || id === 'plazadetails') setAdminExpanded(true)
+    if (id === 'admin' || id === 'plazanames' || id === 'plazadetails' || id === 'masters') setAdminExpanded(true)
   }
 
   function handleAdminClick() {
@@ -204,6 +206,7 @@ export default function App() {
         {page === 'admin'        && <AdminPage />}
         {page === 'plazanames'   && <PlazaNamesPage />}
         {page === 'plazadetails' && <PlazaDetailsPage />}
+        {page === 'masters' && <MastersPage />}
       </main>
 
       {/* PIN Modal */}
