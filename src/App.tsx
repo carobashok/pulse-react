@@ -9,14 +9,16 @@ import CoveragePage     from './pages/CoveragePage'
 import PlazaNamesPage   from './pages/PlazaNamesPage'
 import PlazaDetailsPage from './pages/PlazaDetailsPage'
 import MastersPage from './pages/MastersPage'
+import StateSummaryPage from './pages/StateSummaryPage'
 
-type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'map' | 'coverage' | 'admin' | 'plazanames' | 'plazadetails' | 'masters'
+type Page = 'dashboard' | 'cagr' | 'scf' | 'stretch' | 'map' | 'coverage' | 'admin' | 'plazanames' | 'plazadetails' | 'masters' | 'statesummary'
 
 const NAV = [
   { id: 'dashboard' as Page, label: 'Dashboard',        sub: 'Network overview'    },
   { id: 'cagr'      as Page, label: 'CAGR Analysis',    sub: 'Plaza revenue table' },
   { id: 'scf'       as Page, label: 'SCF & ADT',        sub: 'Seasonal factors'    },
   { id: 'stretch'   as Page, label: 'Stretch Analysis', sub: 'Compare plazas'      },
+  { id: 'statesummary' as Page, label: 'State Summary',  sub: 'State-wise collection' },
   { id: 'map'       as Page, label: 'Plaza Map',        sub: 'All toll locations'  },
   { id: 'coverage'  as Page, label: 'Data Coverage',    sub: 'Months available'    },
 ]
@@ -207,6 +209,7 @@ export default function App() {
         {page === 'plazanames'   && <PlazaNamesPage />}
         {page === 'plazadetails' && <PlazaDetailsPage />}
         {page === 'masters' && <MastersPage />}
+        {page === 'statesummary' && <StateSummaryPage />}
       </main>
 
       {/* PIN Modal */}
