@@ -59,7 +59,9 @@ export function useCAGR() {
 }
 
 // Separate hook for Dashboard page — needs month-level data for trend charts
-// but only fetches when a specific plaza or filter is selected
+// but only fetches when a specific plaza or filter is selected.
+// Applies plaza_corrections: rows stored under a raw name (e.g. "Paranur Toll Plaza MLFF")
+// are returned under their canonical name ("Paranur"), so one plaza = one series.
 export function useCAGRMonthly(plaza: string) {
   const [data, setData]       = useState<CAGRRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -70,18 +72,41 @@ export function useCAGRMonthly(plaza: string) {
     async function load() {
       setLoading(true); setError(null)
       try {
+        const key = (s: string) => s.toLowerCase().trim()
+
+        // raw name -> canonical name (lookup is skipped, not fatal, if it fails)
+        const { data: corr } = await supabase
+          .from('plaza_corrections')
+          .select('raw_name, canonical_name')
+        const toCanonical: Record<string, string> = {}
+        const rawByCanonical: Record<string, string[]> = {}
+        for (const c of (corr ?? []) as { raw_name: string; canonical_name: string }[]) {
+          if (!c.raw_name || !c.canonical_name) continue
+          toCanonical[key(c.raw_name)] = c.canonical_name
+          const ck = key(c.canonical_name)
+          ;(rawByCanonical[ck] ??= []).push(c.raw_name)
+        }
+
         let query = supabase
           .from('monthly_plaza_summary')
           .select('plaza_name,piu,ro,fy,month,month_name,fy_month_ord,days_in_month,total_amount,total_pcu,total_count,months_data')
           .order('fy').order('month').order('plaza_name')
 
         if (plaza !== 'All') {
-          query = query.eq('plaza_name', plaza)
+          // every raw name that maps to the selected canonical name, plus the name itself
+          const names = [...new Set([plaza, ...(rawByCanonical[key(plaza)] ?? [])])]
+          query = query.in('plaza_name', names)
         }
 
         const { data: rows, error: err } = await query
         if (err) throw new Error(err.message)
-        if (!cancelled) setData((rows ?? []) as CAGRRow[])
+
+        // Return every row under its canonical name
+        const mapped = ((rows ?? []) as CAGRRow[]).map(r => ({
+          ...r,
+          plaza_name: toCanonical[key(r.plaza_name)] ?? r.plaza_name,
+        }))
+        if (!cancelled) setData(mapped)
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Load failed')
       } finally {
